@@ -999,6 +999,14 @@ function getPublicState() {
 // Router
 // ---------------------------------------------------------------------------
 
+// Expose all known OS docker images for update/preload features
+export function getModuleImages(): string[] {
+  return [...new Set(MODULES.filter((m) => m.kind === 'image' && m.image).map((m) => m.image!))];
+}
+
+// ---------------------------------------------------------------------------
+// Installer Routes (Express)
+// ---------------------------------------------------------------------------
 export function registerInstallerRoutes(app: express.Express): void {
   app.get('/api/installer/status', (req, res) => {
     res.json(getPublicState());

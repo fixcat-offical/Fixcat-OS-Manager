@@ -10,6 +10,7 @@ import {
   Boxes,
   Rocket,
   Users,
+  Cpu,
   X,
 } from 'lucide-react';
 import { FixcatLogo } from './icons/OSIcons';
@@ -124,12 +125,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20',
     },
     {
+      id: 'hardware',
+      label: 'Управление железом',
+      sublabel: 'CPU, вентиляторы, Swap',
+      icon: Cpu,
+      badge: 'Sys',
+      badgeColor: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20',
+    },
+    {
       id: 'settings',
-      label: 'Настройки Docker',
-      sublabel: 'Сокет и хост-IP',
+      label: 'Настройки панели',
+      sublabel: 'Параметры, обновление',
       icon: Settings,
-      badge: isConnected ? 'Сокет OK' : 'Отключен',
-      badgeColor: isConnected ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300',
+      badge: isConnected ? 'Docker OK' : 'Настройки',
+      badgeColor: isConnected ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300',
     },
   ];
 

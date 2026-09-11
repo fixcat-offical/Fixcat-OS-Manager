@@ -14,6 +14,7 @@ import { InstallerExportView } from './components/InstallerExportView';
 import { ModulesView } from './components/ModulesView';
 import { AutostartView } from './components/AutostartView';
 import { UsersView } from './components/UsersView';
+import { HardwareView } from './components/HardwareView';
 import { AuthView } from './components/AuthView';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
@@ -23,10 +24,12 @@ export default function App() {
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [history, setHistory] = useState<MetricHistoryPoint[]>([]);
-  const [refreshInterval, setRefreshInterval] = useState<number>(2000);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Live refresh: panel always polls in real-time (no manual interval selection)
+  const LIVE_REFRESH_MS = 1500;
 
   // Auth State
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
@@ -169,14 +172,14 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
-  // Auto-refresh timer
+  // Live auto-refresh timer (always on while authenticated)
   useEffect(() => {
-    if (refreshInterval <= 0 || !authStatus.isAuthenticated) return;
+    if (!authStatus.isAuthenticated) return;
     const timer = setInterval(() => {
       fetchData();
-    }, refreshInterval);
+    }, LIVE_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [refreshInterval, fetchData, authStatus.isAuthenticated]);
+  }, [LIVE_REFRESH_MS, fetchData, authStatus.isAuthenticated]);
 
   // Action handler (Start/Stop/Restart/Remove/Pause/Unpause)
   const handleContainerAction = async (id: string, action: string) => {
@@ -277,8 +280,6 @@ export default function App() {
           onOpenDeploy={() => setIsDeployModalOpen(true)}
           onRefresh={fetchData}
           isRefreshing={isRefreshing}
-          refreshInterval={refreshInterval}
-          setRefreshInterval={setRefreshInterval}
           onOpenQuickVnc={() => setCurrentTab('novnc')}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
           onLogout={handleLogout}
@@ -357,9 +358,14 @@ export default function App() {
           {currentTab === 'settings' && (
             <SettingsView
               systemInfo={systemInfo}
-              refreshInterval={refreshInterval}
-              setRefreshInterval={setRefreshInterval}
-              onSaveConfig={handleUpdateConfig}
+              authToken={authToken}
+            />
+          )}
+
+          {currentTab === 'hardware' && (
+            <HardwareView
+              authToken={authToken}
+              showToast={showToast}
             />
           )}
         </main>

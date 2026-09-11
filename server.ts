@@ -6,8 +6,9 @@ import path from 'path';
 import net from 'net';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { exec, execSync } from 'child_process';
-import { registerInstallerRoutes, getInstallerScript } from './installer.ts';
+import { exec, execSync, spawn } from 'child_process';
+import { registerInstallerRoutes, getInstallerScript, getModuleImages } from './installer.ts';
+import { registerHardwareRoutes } from './hardware.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,7 +80,7 @@ function requireAuth(req: any, res: any, next: () => void) {
 }
 
 // Require admin role for user-management APIs
-function requireAdmin(req: any, res: any, next: () => void) {
+export function requireAdmin(req: any, res: any, next: () => void) {
   const username = currentUserFromReq(req);
   if (!username) return res.status(401).json({ error: 'Не авторизован.' });
   const user = getUsers().find((u) => u.username === username);
@@ -101,7 +102,8 @@ interface EventEntry {
 
 const eventLog: EventEntry[] = [];
 
-function recordEvent(type: string, message: string, container?: string, id?: string) {
+export function recordEvent(type: string, message: string, container?: string, id?: string) {
+  if (appConfig && appConfig.enableEventJournal === false) return;
   const entry: EventEntry = { timestamp: new Date().toISOString(), type, message };
   if (container) entry.container = container;
   if (id) entry.id = id;
@@ -122,14 +124,61 @@ interface MetricPoint {
 const telemetryHistory: MetricPoint[] = [];
 const MAX_HISTORY = 40;
 
-// User / Host configuration
-let appConfig = {
+// User / Host configuration (persisted to settings.json)
+let appConfig: Record<string, any> = {
   hostIp: 'localhost',
   dockerSocketPath: '/var/run/docker.sock',
   dockerTcpHost: '',
-  refreshInterval: 2000,
   autoDetectNoVnc: true,
+  // ---- extended panel settings ----
+  panelTitle: 'Fixcat OS Manager',
+  language: 'ru',
+  theme: 'dark',
+  compactMode: false,
+  animationsEnabled: true,
+  maxHistoryPoints: 40,
+  enableEventJournal: true,
+  enableGpuTelemetry: true,
+  statsEnabled: true,
+  enableAutoUpdateCheck: true,
+  updateChannel: 'main',
+  logLevel: 'info',
+  novncScaleMode: 'fit',
+  autoOpenNovnc: true,
+  defaultRestartPolicy: 'no',
+  defaultResolution: '1920x1080',
+  defaultRamMb: 2048,
+  defaultCpuCores: 2,
+  defaultOsTemplate: 'ubuntu',
+  swapAutoCleanup: false,
+  backupRetentionDays: 7,
+  openAiUrl: 'http://localhost:1234/v1',
+  onDeviceAiAutoStart: false,
+  networkPollingEnabled: true,
 };
+
+const settingsFile = path.join(dataDir, 'settings.json');
+
+function loadAppConfig() {
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+      appConfig = { ...appConfig, ...saved };
+    }
+  } catch {
+    // Reset to defaults on corrupt file
+  }
+}
+
+function saveAppConfig() {
+  try {
+    fs.writeFileSync(settingsFile, JSON.stringify(appConfig, null, 2), 'utf-8');
+  } catch {
+    // No permission to persist — ignore
+  }
+}
+
+loadAppConfig();
 
 // Map OS image → internal noVNC web port + VNC port
 function getImagePorts(image: string): { web: number; vnc: number } {
@@ -505,6 +554,7 @@ function detectOSAndVnc(container: any) {
 
 // Background metric recorder for REAL system stats
 setInterval(async () => {
+  if (!appConfig.statsEnabled) return;
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const usedMem = totalMem - freeMem;
@@ -520,8 +570,11 @@ setInterval(async () => {
   const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
   const containerStats: Record<string, { cpu: number; ramMb: number }> = {};
-  const gpus = await getGpuStats();
-  const gpuUsages = gpus.map((g) => g.usagePercent);
+  let gpuUsages: number[] = [];
+  if (appConfig.enableGpuTelemetry) {
+    const gpus = await getGpuStats();
+    gpuUsages = gpus.map((g) => g.usagePercent);
+  }
 
   telemetryHistory.push({
     timestamp: now.toISOString(),
@@ -532,7 +585,7 @@ setInterval(async () => {
     containers: containerStats,
   });
 
-  if (telemetryHistory.length > MAX_HISTORY) {
+  if (telemetryHistory.length > (appConfig.maxHistoryPoints || MAX_HISTORY)) {
     telemetryHistory.shift();
   }
 }, 2000);
@@ -1593,13 +1646,12 @@ app.post('/api/config/restore', (req, res) => {
   if (!cfg || typeof cfg !== 'object') {
     return res.status(400).json({ error: 'Отсутствует блок "config" в загруженном файле.' });
   }
-  if (cfg.hostIp !== undefined) appConfig.hostIp = String(cfg.hostIp);
-  if (cfg.dockerSocketPath !== undefined) appConfig.dockerSocketPath = String(cfg.dockerSocketPath);
-  if (cfg.dockerTcpHost !== undefined) appConfig.dockerTcpHost = String(cfg.dockerTcpHost);
-  if (cfg.refreshInterval !== undefined) {
-    const ri = Number(cfg.refreshInterval);
-    if (ri > 0) appConfig.refreshInterval = ri;
+  for (const key of Object.keys(cfg)) {
+    if (key in appConfig) {
+      appConfig[key] = cfg[key];
+    }
   }
+  saveAppConfig();
   recordEvent('config', 'Конфигурация восстановлена из бэкапа');
   res.json({ success: true, config: appConfig, message: 'Конфигурация успешно применена.' });
 });
@@ -1746,12 +1798,22 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { hostIp, dockerSocketPath, dockerTcpHost, refreshInterval } = req.body;
-  if (hostIp !== undefined) appConfig.hostIp = hostIp;
-  if (dockerSocketPath !== undefined) appConfig.dockerSocketPath = dockerSocketPath;
-  if (dockerTcpHost !== undefined) appConfig.dockerTcpHost = dockerTcpHost;
-  if (refreshInterval !== undefined) appConfig.refreshInterval = Number(refreshInterval);
-
+  const body = req.body || {};
+  // Whitelist-style update: apply only known keys
+  for (const key of Object.keys(body)) {
+    if (key in appConfig) {
+      appConfig[key] = body[key];
+    }
+  }
+  // Normalise numeric/bool fields
+  if (appConfig.maxHistoryPoints) appConfig.maxHistoryPoints = Math.max(5, Math.min(200, Number(appConfig.maxHistoryPoints) || 40));
+  if (appConfig.defaultRamMb) appConfig.defaultRamMb = Math.max(256, Number(appConfig.defaultRamMb) || 2048);
+  if (appConfig.defaultCpuCores) appConfig.defaultCpuCores = Math.max(1, Number(appConfig.defaultCpuCores) || 2);
+  for (const b of ['autoDetectNoVnc', 'compactMode', 'animationsEnabled', 'enableEventJournal', 'enableGpuTelemetry', 'statsEnabled', 'enableAutoUpdateCheck', 'autoOpenNovnc', 'swapAutoCleanup', 'networkPollingEnabled', 'onDeviceAiAutoStart']) {
+    appConfig[b] = Boolean(appConfig[b]);
+  }
+  saveAppConfig();
+  recordEvent('config', 'Настройки панели обновлены');
   res.json({ success: true, config: appConfig });
 });
 
@@ -1772,7 +1834,7 @@ app.post('/api/containers/create', async (req, res) => {
   const actualPort = await getAvailablePort(requestedPort);
   const actualVncPort = await getAvailablePort(actualPort + 100);
 
-  const name = containerName || `${osType || 'ubuntu'}-desktop-${Math.floor(Math.random() * 900 + 100)}`;
+  const name = containerName || `${osType || appConfig.defaultOsTemplate || 'ubuntu'}-desktop-${Math.floor(Math.random() * 900 + 100)}`;
 
   let image = 'dorowu/ubuntu-desktop-lxde-vnc:latest';
   if (customImageName) {
@@ -1790,7 +1852,7 @@ app.post('/api/containers/create', async (req, res) => {
       ? { web: customWebPort, vnc: customVncPort }
       : getImagePorts(image);
 
-  const dockerRunCmd = `docker run -d --restart=${restartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc} -e RESOLUTION=${resolution || '1920x1080'} --memory=${ramMb || 2048}m --cpus=${cpuCores || 2} ${image}`;
+  const dockerRunCmd = `docker run -d --restart=${restartPolicy || appConfig.defaultRestartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc} -e RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'} --memory=${ramMb || appConfig.defaultRamMb || 2048}m --cpus=${cpuCores || appConfig.defaultCpuCores || 2} ${image}`;
 
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
@@ -1811,15 +1873,15 @@ app.post('/api/containers/create', async (req, res) => {
       if (socketExists) {
         const createBody = {
           Image: image,
-          Env: [`RESOLUTION=${resolution || '1920x1080'}`],
-          ExposedPorts: { [`${imgPorts.web}/tcp`]: {}, [`${imgPorts.vnc}/tcp`]: {} },
-          HostConfig: {
-            RestartPolicy: { Name: restartPolicy || 'no' },
+Env: [`RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`],
+         ExposedPorts: { [`${imgPorts.web}/tcp`]: {}, [`${imgPorts.vnc}/tcp`]: {} },
+         HostConfig: {
+           RestartPolicy: { Name: restartPolicy || appConfig.defaultRestartPolicy || 'no', MaximumRetryCount: (restartPolicy || appConfig.defaultRestartPolicy || 'no') === 'on-failure' ? 5 : 0 },
             PortBindings: {
               [`${imgPorts.web}/tcp`]: [{ HostPort: String(actualPort) }],
               [`${imgPorts.vnc}/tcp`]: [{ HostPort: String(actualVncPort) }],
             },
-            Memory: (parseInt(ramMb, 10) || 2048) * 1024 * 1024,
+            Memory: (parseInt(ramMb, 10) || appConfig.defaultRamMb || 2048) * 1024 * 1024,
           },
         };
 
@@ -1860,6 +1922,142 @@ app.post('/api/containers/create', async (req, res) => {
 
 // --- INSTALLER & MODULES ROUTES (Fixcat installer engine) ---
 registerInstallerRoutes(app);
+registerHardwareRoutes(app, { requireAdmin, recordEvent });
+
+// --- Panel & Component Update ---
+const updateLog: string[] = [];
+let updateRunning = false;
+
+function appendUpdateLog(line: string) {
+  updateLog.push(`[${new Date().toLocaleTimeString()}] ${line}`);
+  if (updateLog.length > 500) updateLog.length = 500;
+}
+
+app.get('/api/update/status', requireAdmin, async (_req, res) => {
+  try {
+    const execOpts: any = { timeout: 5000, encoding: 'utf-8' };
+    const commit = execSyncSafe('git rev-parse --short HEAD', execOpts).trim();
+    const branch = execSyncSafe('git branch --show-current', execOpts).trim();
+    let remoteUrl = '';
+    try { remoteUrl = execSyncSafe('git remote get-url origin', execOpts).trim(); } catch { /* ignore */ }
+    const behind = appConfig.enableAutoUpdateCheck
+      ? await getBehindCount(branch)
+      : null;
+    res.json({
+      running: updateRunning,
+      commit,
+      branch,
+      remoteUrl,
+      appVersion,
+      updateChannel: appConfig.updateChannel || 'main',
+      behind,
+      lastLog: updateLog.slice(-30),
+    });
+  } catch (err: any) {
+    res.json({ running: updateRunning, appVersion, commit: null, branch: null, error: err?.message, lastLog: updateLog.slice(-30) });
+  }
+});
+
+async function getBehindCount(branch: string): Promise<number> {
+  try {
+    execSyncSafe('git fetch --quiet origin 2>/dev/null || true', { timeout: 15000, encoding: 'utf-8' });
+    const out = execSyncSafe(`git rev-list --count HEAD..origin/${branch} 2>/dev/null || echo 0`, { timeout: 8000, encoding: 'utf-8' });
+    return Number(out.trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function execSyncSafe(cmd: string, opts: any = {}): string {
+  return execSync(cmd, { timeout: 120000, encoding: 'utf-8', ...opts });
+}
+
+app.post('/api/update/panel', requireAdmin, async (_req, res) => {
+  if (updateRunning) return res.status(409).json({ error: 'Обновление уже запущено' });
+  updateRunning = true;
+  updateLog.length = 0;
+  appendUpdateLog('Обновление панели запускается...');
+  recordEvent('config', 'Запущено обновление панели');
+
+  const channel = (appConfig.updateChannel || 'main').replace(/[^a-zA-Z0-9._-]/g, '');
+  const projectRoot = __dirname;
+  const script = `
+cd "${projectRoot}" && echo "--- git pull origin/${channel} ---" && \
+git checkout ${channel} 2>/dev/null && \
+git fetch origin ${channel} && \
+git reset --hard origin/${channel} && \
+echo "--- npm install ---" && \
+npm install --no-audit --no-fund && \
+echo "--- vite build ---" && \
+npm run build && \
+echo "--- update complete ---"`;
+
+  const child = spawn('/bin/bash', ['-lc', script], { cwd: projectRoot });
+  child.stdout?.on('data', (d: Buffer) => { appendUpdateLog(d.toString().trimEnd()); });
+  child.stderr?.on('data', (d: Buffer) => { appendUpdateLog(d.toString().trimEnd()); });
+  child.on('close', (code) => {
+    appendUpdateLog(`Процесс завершён с кодом ${code}`);
+    updateRunning = false;
+    recordEvent('config', `Обновление панели завершено (exit ${code})`);
+  });
+  child.on('error', (err) => {
+    appendUpdateLog(`Ошибка: ${err.message}`);
+    updateRunning = false;
+  });
+
+  res.json({ success: true, message: 'Обновление запущено', channel });
+});
+
+app.post('/api/update/os-images', requireAdmin, async (_req, res) => {
+  if (updateRunning) return res.status(409).json({ error: 'Обновление уже запущено' });
+  updateRunning = true;
+  updateLog.length = 0;
+  appendUpdateLog('Обновление Docker-образов...');
+  recordEvent('config', 'Запущено обновление Docker-образов');
+
+  const images = getModuleImages();
+  const script = images.map((img) => `docker pull ${img} && echo "OK: ${img}" || echo "FAIL: ${img}"`).join(' && ');
+  const child = spawn('/bin/bash', ['-lc', script]);
+  child.stdout?.on('data', (d: Buffer) => { appendUpdateLog(d.toString().trimEnd()); });
+  child.stderr?.on('data', (d: Buffer) => { appendUpdateLog(d.toString().trimEnd()); });
+  child.on('close', (code) => {
+    appendUpdateLog(`Обновление образов завершено (exit ${code})`);
+    updateRunning = false;
+    recordEvent('config', `Обновление образов завершено (exit ${code})`);
+  });
+  child.on('error', (err) => {
+    appendUpdateLog(`Ошибка: ${err.message}`);
+    updateRunning = false;
+  });
+
+  res.json({ success: true, images, message: 'Обновление образов запущено' });
+});
+
+app.post('/api/update/restart', requireAdmin, async (_req, res) => {
+  appendUpdateLog('Попытка перезапуска панели...');
+  try {
+    const hasSystemctl = execSyncSafe('command -v systemctl 2>/dev/null || echo no').trim();
+    if (hasSystemctl === 'systemctl') {
+      const out = execSyncSafe('systemctl restart fixcat-os-manager 2>&1 || echo systemctl-restart-sent');
+      res.json({ success: true, method: 'systemctl', message: 'Панель перезапущена', output: out });
+      process.exit(0);
+      return;
+    }
+    const hasPm2 = execSyncSafe('command -v pm2 2>/dev/null || echo no').trim();
+    if (hasPm2 === 'pm2') {
+      const out = execSyncSafe('pm2 restart all 2>&1');
+      res.json({ success: true, method: 'pm2', message: 'Панель перезапущена через pm2', output: out });
+      process.exit(0);
+      return;
+    }
+    const cmd = `sleep 2 && cd "${__dirname}" && node dist/server.js &`;
+    spawn('/bin/bash', ['-lc', cmd], { detached: true, stdio: 'ignore' }).unref();
+    res.json({ success: true, method: 'detached', message: 'Панель перезапускается в фоне' });
+    setTimeout(() => process.exit(0), 1500);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || 'Не удалось перезапустить панель' });
+  }
+});
 
 // Start Express + Vite
 async function startServer() {
