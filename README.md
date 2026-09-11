@@ -23,6 +23,18 @@
 curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/install.sh | sudo bash
 ```
 
+**Обновление одной командой** 🔄
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/update.sh | sudo bash
+```
+
+**Удаление одной командой** 🗑️
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/uninstall.sh | sudo bash
+```
+
 </div>
 
 ---
@@ -85,6 +97,51 @@ sudo bash install.sh --yes --no-images --no-nvidia --no-lms
 
 > 💡 Скрипт также доступен прямо **из самой панели** (вкладка «Установщик»)
 > и живёт в её API: `GET /api/installer/script`.
+
+---
+
+## 🔄 Обновление
+
+Подтягивает последнюю версию, ставит зависимости, пересобирает и перезапускает службу.
+Файл `.env` (порт/директории) сохраняется.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/update.sh | sudo bash
+```
+
+```bash
+# Своя директория установки:
+curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/update.sh -o update.sh \
+  && sudo bash update.sh --dir /srv/fixcat
+```
+
+---
+
+## 🗑️ Удаление
+
+Останавливает и удаляет службу и каталог установки. **Данные (users.db, модели, конфиги)
+по умолчанию сохраняются** — подтверждение запрашивается интерактивно.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/main/uninstall.sh | sudo bash
+```
+
+```bash
+# Без вопросов (данные сохранятся):
+sudo bash uninstall.sh --yes
+
+# Полное удаление вместе с данными и ОС-образами:
+sudo bash uninstall.sh --yes --purge
+```
+
+Параметры:
+
+| Флаг | Описание |
+|------|----------|
+| `--dir <path>` | Директория установки (по умолчанию `/opt/fixcat-os-manager`) |
+| `--yes` / `-y` | Без вопросов (данные сохраняются) |
+| `--purge` | Удалить данные и ОС-образы модулей |
+| `--keep-data` | Гарантированно сохранить данные |
 
 ### Способ 2 — Вручную (разработка)
 
@@ -156,7 +213,9 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 Fixcat-OS-Manager/
 ├── server.ts                  # Express-сервер + роуты
 ├── installer.ts               # Движок установщика/модулей (SSE, шаги, bash-скрипт)
-├── install.sh                 # Стенд-алоун скрипт одной команды
+├── install.sh                 # Установка одной командой
+├── update.sh                  # Обновление одной командой
+├── uninstall.sh               # Удаление одной командой
 ├── src/
 │   ├── App.tsx                # Роутинг вкладок, авторизация, тосты
 │   └── components/
