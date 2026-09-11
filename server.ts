@@ -552,6 +552,223 @@ function detectOSAndVnc(container: any) {
   };
 }
 
+// ==================== Container Port Placeholder ====================
+// Stopped containers keep their published port "occupied". A tiny placeholder
+// HTTP server answers on that port with a "container temporarily stopped" page,
+// so a direct visit to http://host:PORT never shows a dead connection.
+interface PortRegistryEntry { name: string; port: number; restart: string; managed: boolean }
+
+const portRegistry = new Map<string, PortRegistryEntry>();
+let portRegistryLoaded = false;
+
+function loadPortRegistry() {
+  if (portRegistryLoaded) return;
+  portRegistryLoaded = true;
+  try {
+    const file = path.join(dataDir, 'ports.json');
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      if (parsed && typeof parsed === 'object') {
+        for (const [id, entry] of Object.entries(parsed)) {
+          const e = entry as any;
+          if (e && e.port) {
+            portRegistry.set(id, { name: String(e.name || id), port: Number(e.port), restart: String(e.restart || 'no'), managed: true });
+          }
+        }
+      }
+    }
+  } catch { /* corrupt registry — reset */ }
+}
+
+function getRegistryByContainerId(id: string): { id: string; entry: PortRegistryEntry } | null {
+  if (portRegistry.has(id)) return { id, entry: portRegistry.get(id)! };
+  for (const [rid, entry] of portRegistry) {
+    if (rid.startsWith(id) || id.startsWith(rid)) return { id: rid, entry };
+  }
+  return null;
+}
+
+function savePortRegistry() {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    const obj: Record<string, any> = {};
+    for (const [id, e] of portRegistry) obj[id] = { name: e.name, port: e.port, restart: e.restart };
+    fs.writeFileSync(path.join(dataDir, 'ports.json'), JSON.stringify(obj, null, 2));
+  } catch { /* ignore */ }
+}
+
+const placeholders = new Map<number, { server: http.Server; containerId: string; name: string }>();
+const inspectPortCache = new Map<string, PortRegistryEntry | null>();
+
+function placeholderPage(name: string, port: number, panelUrl: string): string {
+  const safeName = name.replace(/[<>&"']/g, '');
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="5">
+<title>${safeName} — Контейнер остановлен</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:radial-gradient(circle at 20% 10%, #1b2a4a 0%, #0b1220 55%, #060a14 100%); min-height:100vh; display:flex; align-items:center; justify-content:center; color:#e2e8f0; padding:20px; }
+  .card { background:rgba(15,23,42,0.85); border:1px solid rgba(148,163,184,0.15); border-radius:20px; padding:40px; max-width:440px; width:100%; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.5); backdrop-filter:blur(8px); }
+  .moon { width:64px; height:64px; margin:0 auto 20px; border-radius:50%; background:linear-gradient(135deg,#f59e0b,#d97706); animation:float 3s ease-in-out infinite; box-shadow:0 0 40px rgba(245,158,11,0.35); }
+  @keyframes float { 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-8px);} }
+  h1 { font-size:20px; font-weight:800; margin-bottom:8px; letter-spacing:-0.3px; }
+  .name { color:#f59e0b; }
+  h2 { font-size:15px; font-weight:600; color:#94a3b8; margin-bottom:16px; }
+  p { font-size:13px; color:#94a3b8; line-height:1.6; }
+  code { background:#0f172a; border:1px solid #1e293b; color:#7dd3fc; padding:2px 8px; border-radius:8px; font-size:12px; }
+  .status { display:inline-flex; align-items:center; gap:8px; margin:18px 0; padding:8px 14px; border-radius:999px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); color:#fcd34d; font-size:12px; font-weight:700; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#f59e0b; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{ opacity:1;} 50%{ opacity:0.3;} }
+  a.btn { display:inline-block; margin-top:8px; padding:11px 22px; border-radius:12px; background:#2563eb; color:#fff; text-decoration:none; font-weight:700; font-size:13px; transition:background .2s; }
+  a.btn:hover { background:#1d4ed8; }
+  .hint { font-size:11px; color:#64748b; margin-top:16px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="moon"></div>
+    <h1>Контейнер <span class="name">«${safeName}»</span></h1>
+    <h2>временно остановлен</h2>
+    <span class="status"><span class="dot"></span> Состояние: STOPPED</span>
+    <p>Система выключена и занимает порт <code>:${port}</code>.<br>Обновите страницу через несколько секунд или</p>
+    <a class="btn" href="${panelUrl}">Открыть Fixcat OS Manager</a>
+    <p class="hint">Страница обновляется автоматически каждые 5 секунд и откроет ОС, как только контейнер будет запущен.</p>
+  </div>
+</body>
+</html>`;
+}
+
+function bindPlaceholder(port: number, containerId: string, name: string): void {
+  if (placeholders.has(port)) {
+    const existing = placeholders.get(port)!;
+    if (existing.containerId === containerId && existing.name === name) return;
+    unbindPlaceholder(port);
+  }
+  try {
+    const server = http.createServer((req, res) => {
+      let hostname = 'localhost';
+      try {
+        hostname = new URL(`http://${req.headers.host}`).hostname;
+      } catch { /* fallback to localhost */ }
+      const panelUrl = `http://${hostname}:${PORT}`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(placeholderPage(name, port, panelUrl));
+    });
+    server.on('error', () => {
+      placeholders.delete(port);
+    });
+    server.listen(port, '0.0.0.0', () => {
+      placeholders.set(port, { server, containerId, name });
+    });
+  } catch { /* binding failed — ignore */ }
+}
+
+function unbindPlaceholder(port: number): void {
+  const p = placeholders.get(port);
+  if (p) {
+    placeholders.delete(port);
+    try { p.server.close(); } catch { /* ignore */ }
+  }
+}
+
+function unbindPlaceholderForContainer(id: string): void {
+  for (const [port, p] of [...placeholders]) {
+    if (p.containerId === id || p.containerId.startsWith(id) || id.startsWith(p.containerId)) unbindPlaceholder(port);
+  }
+}
+
+async function resolveContainerPort(c: any): Promise<{ port: number; restart: string } | null> {
+  // 1. reported runtime ports (running containers)
+  if (Array.isArray(c.Ports) && c.Ports.length) {
+    const candidates = [80, 6080, 6081, 6082, 3000, 3001, 3002, 3003, 6901, 8006, 8007, 8080];
+    for (const cand of candidates) {
+      const p = c.Ports.find((pt: any) => pt.PublicPort === cand || pt.PrivatePort === cand);
+      if (p && p.PublicPort) return { port: p.PublicPort, restart: 'no' };
+    }
+    const anyP = c.Ports.find((pt: any) => pt.PublicPort && pt.PublicPort !== 5900 && pt.PublicPort !== 5901 && pt.PublicPort !== 22);
+    if (anyP?.PublicPort) return { port: anyP.PublicPort, restart: 'no' };
+    return null;
+  }
+  // 2. registry
+  const reg = getRegistryByContainerId(c.Id);
+  if (reg) return { port: reg.entry.port, restart: reg.entry.restart };
+  // 3. lazy inspect (cached)
+  if (inspectPortCache.has(c.Id)) {
+    const cached = inspectPortCache.get(c.Id)!;
+    return cached ? { port: cached.port, restart: cached.restart } : null;
+  }
+  try {
+    const { statusCode, data } = await queryDockerSocket(`/containers/${c.Id}/json`);
+    if (statusCode === 200 && data) {
+      const bindings: Record<string, any> = data.HostConfig?.PortBindings || {};
+      const restart = String(data.HostConfig?.RestartPolicy?.Name || 'no');
+      const candidates = [80, 6080, 6081, 6082, 3000, 3001, 3002, 3003, 6901, 8006, 8007, 8080];
+      let hostPort: number | null = null;
+      for (const cand of candidates) {
+        const hp = Number(bindings[`${cand}/tcp`]?.[0]?.HostPort);
+        if (hp) { hostPort = hp; break; }
+      }
+      if (!hostPort) {
+        for (const [containerPort, arr] of Object.entries(bindings)) {
+          if (containerPort.includes('5900') || containerPort.includes('5901') || containerPort.includes('22')) continue;
+          const hp = Number((arr as any)[0]?.HostPort);
+          if (hp) { hostPort = hp; break; }
+        }
+      }
+      const name = (c.Names?.[0] || '').replace(/^\//, '') || c.Id.slice(0, 12);
+      const entry: PortRegistryEntry = { name, port: hostPort || 0, restart, managed: false };
+      inspectPortCache.set(c.Id, hostPort ? entry : null);
+      if (hostPort) {
+        portRegistry.set(c.Id, entry);
+        savePortRegistry();
+        return { port: hostPort, restart };
+      }
+    }
+  } catch { /* inspect failed */ }
+  return null;
+}
+
+async function reconcilePlaceholders(rawContainers: any[]): Promise<void> {
+  if (!Array.isArray(rawContainers)) return;
+  const liveIds = new Set<string>();
+  for (const c of rawContainers) {
+    if (!c.Id) continue;
+    liveIds.add(c.Id);
+    const state = c.State || '';
+    const running = ['running', 'paused', 'restarting'].includes(state);
+    const resolved = await resolveContainerPort(c);
+    if (!resolved || !resolved.port) continue;
+    const name = (c.Names?.[0] || '').replace(/^\//, '') || c.Id.slice(0, 12);
+    if (running) {
+      unbindPlaceholder(resolved.port);
+    } else if (state === 'exited' || state === 'dead' || state === 'created') {
+      if (resolved.restart === 'no') {
+        bindPlaceholder(resolved.port, c.Id, name);
+      } else {
+        unbindPlaceholder(resolved.port);
+      }
+    } else {
+      unbindPlaceholder(resolved.port);
+    }
+  }
+  for (const [port, p] of [...placeholders]) {
+    if (!liveIds.has(p.containerId)) unbindPlaceholder(port);
+  }
+}
+
+async function fetchAndReconcile(): Promise<void> {
+  try {
+    const { statusCode, data } = await queryDockerSocket('/containers/json?all=1');
+    if (statusCode === 200 && Array.isArray(data)) await reconcilePlaceholders(data);
+  } catch { /* docker unreachable */ }
+}
+
+setInterval(() => { fetchAndReconcile().catch(() => {}); }, 10000);
+
 // Background metric recorder for REAL system stats
 setInterval(async () => {
   if (!appConfig.statsEnabled) return;
@@ -1397,6 +1614,16 @@ app.get('/api/containers', async (req, res) => {
     if (statusCode === 200 && Array.isArray(data)) {
       const enriched = await Promise.all(
         data.map(async (c: any) => {
+          // For stopped containers Docker reports no runtime ports — restore the
+          // configured port from our registry so noVNC links and placeholder
+          // occupancy keep working.
+          if (c.State !== 'running' && (!Array.isArray(c.Ports) || c.Ports.length === 0)) {
+            const resolved = await resolveContainerPort(c);
+            if (resolved?.port) {
+              c.Ports = [{ PublicPort: resolved.port, PrivatePort: 80, Type: 'tcp' }];
+            }
+          }
+
           const osInfo = detectOSAndVnc(c);
 
           let stats = {
@@ -1462,6 +1689,8 @@ app.get('/api/containers', async (req, res) => {
         })
       );
 
+      reconcilePlaceholders(data).catch(() => {});
+
       return res.json({
         source: 'real_docker',
         containers: enriched,
@@ -1484,6 +1713,9 @@ app.post('/api/containers/:id/action', async (req, res) => {
   const { action } = req.body;
 
   try {
+    // Free the placeholder so Docker can take back the port when starting/restarting.
+    unbindPlaceholderForContainer(id);
+
     let dockerMethod = 'POST';
     let dockerPath = `/containers/${id}/${action}`;
 
@@ -1494,6 +1726,13 @@ app.post('/api/containers/:id/action', async (req, res) => {
 
     const { statusCode, data } = await queryDockerSocket(dockerPath, dockerMethod);
     if (statusCode < 300) {
+      if (action === 'remove') {
+        const reg = getRegistryByContainerId(id);
+        if (reg) {
+          portRegistry.delete(reg.id);
+          savePortRegistry();
+        }
+      }
       recordEvent('action', `Действие «${action}» выполнено`, id.slice(0, 12), id);
       return res.json({ success: true, message: `Действие "${action}" успешно выполнено.` });
     } else {
@@ -1857,6 +2096,8 @@ app.post('/api/containers/create', async (req, res) => {
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
       const containerId = stdout.trim();
+      portRegistry.set(containerId, { name, port: actualPort, restart: restartPolicy || appConfig.defaultRestartPolicy || 'no', managed: true });
+      savePortRegistry();
       recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, containerId, containerId);
       return res.json({
         success: true,
@@ -1898,6 +2139,8 @@ Env: [`RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`],
 
         if (createRes.statusCode < 300 && createRes.data?.Id) {
           await queryDockerSocket(`/containers/${createRes.data.Id}/start`, 'POST');
+          portRegistry.set(createRes.data.Id, { name, port: actualPort, restart: restartPolicy || appConfig.defaultRestartPolicy || 'no', managed: true });
+          savePortRegistry();
           recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, createRes.data.Id, createRes.data.Id);
           return res.json({
             success: true,
@@ -2085,6 +2328,8 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Fixcat OS Manager] Server running on http://0.0.0.0:${PORT}`);
+    loadPortRegistry();
+    fetchAndReconcile().catch(() => {});
   });
 }
 

@@ -389,6 +389,11 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                     noVNC Порт: :{container.osInfo.noVncPort}
                   </div>
                 )}
+                {container.osInfo?.noVncPort && !isRunning && (
+                  <div className="col-span-2 text-[11px] text-amber-400 font-semibold">
+                    🔒 Порт занят — контейнер остановлен
+                  </div>
+                )}
               </div>
 
               <div className="mt-3 flex items-center justify-between gap-1">
@@ -567,6 +572,9 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                         </button>
                       ) : (
                         <span className="text-[11px] text-slate-500">Порт не привязан</span>
+                      )}
+                      {container.osInfo?.noVncPort && !isRunning && (
+                        <p className="text-[10px] text-amber-400 font-semibold mt-0.5">🔒 Порт занят — остановлен</p>
                       )}
                     </td>
 
