@@ -1,0 +1,6 @@
+{
+  "name": "Fixcat OS Manager",
+  "description": "Управление операционными системами в Docker (Ubuntu, Windows XP noVNC), локальными нейросетями  (), мониторингом CPU, RAM и GPU, и входом по паролю.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
