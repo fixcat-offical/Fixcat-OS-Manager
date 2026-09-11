@@ -192,7 +192,7 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `GET` | `/api/system` | Информация о хосте (CPU/RAM/GPU/сеть) |
+| `GET` | `/api/system` | Информация о хосте (CPU/RAM/GPU/диск/сеть, версия приложения) |
 | `GET` | `/api/containers` | Список контейнеров |
 | `GET` | `/api/containers/:id/inspect` | Детали контейнера |
 | `POST` | `/api/containers/create` | Развернуть ОС |
@@ -207,6 +207,17 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `GET` | `/api/autostarts` | Список политик автозапуска контейнеров |
 | `POST` | `/api/autostarts/:id` | Установить политику (`no`, `always`, `unless-stopped`, `on-failure`) |
 | `DELETE` | `/api/autostarts/:id` | Удалить автозапуск (политика `no`) |
+| `GET` | `/api/auth/status` | Проверка авторизации (возвращает роль) |
+| `POST` | `/api/auth/register` | Регистрация первого администратора |
+| `POST` | `/api/auth/login` | Вход (поддержка нескольких одновременных сессий) |
+| `POST` | `/api/auth/logout` | Выход из текущей сессии |
+| `POST` | `/api/auth/change-password` | Смена собственного пароля 🔒 |
+| `GET` | `/api/users` | Список всех пользователей 🔒👑 |
+| `POST` | `/api/users` | Создать пользователя 🔒👑 |
+| `PUT` | `/api/users/:username` | Редактирование (логин, пароль, роль, статус) 🔒👑 |
+| `DELETE` | `/api/users/:username` | Удалить пользователя 🔒👑 |
+
+> 🔒 — Requires `Authorization: Bearer <token>` header. 👑 — Admin role only.
 
 ---
 

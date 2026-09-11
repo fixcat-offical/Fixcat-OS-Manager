@@ -70,6 +70,16 @@ export const Header: React.FC<HeaderProps> = ({
           title: ' (Нейросети)',
           subtitle: 'Интеграция с , каталог моделей и чат',
         };
+      case 'users':
+        return {
+          title: 'Управление пользователями',
+          subtitle: 'Учётные записи, роли и доступ',
+        };
+      case 'modules':
+        return {
+          title: 'Каталог модулей',
+          subtitle: 'Каталог ОС, AI и системы',
+        };
       case 'settings':
         return {
           title: 'Настройки Docker',

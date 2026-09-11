@@ -9,6 +9,7 @@ import {
   Package,
   Boxes,
   Rocket,
+  Users,
   X,
 } from 'lucide-react';
 import { FixcatLogo } from './icons/OSIcons';
@@ -97,6 +98,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Bot,
       badge: 'New',
       badgeColor: 'bg-blue-500/10 text-blue-300 border border-blue-500/20',
+    },
+    {
+      id: 'users',
+      label: 'Пользователи',
+      sublabel: 'Учётные записи и роли',
+      icon: Users,
+      badge: 'Roles',
+      badgeColor: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20',
     },
     {
       id: 'modules',

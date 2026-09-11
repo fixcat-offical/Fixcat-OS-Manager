@@ -31,10 +31,15 @@ interface UserRecord {
   username: string;
   passwordHash: string;
   createdAt: string;
+  role?: 'admin' | 'user';
+  status?: 'active' | 'disabled';
+  lastLoginAt?: string;
 }
 
-let activeSessionToken: string | null = null;
-let activeSessionUsername: string | null = null;
+const appVersion = '2.6.0';
+
+// Multi-session support: token -> username
+const sessions = new Map<string, string>();
 
 function getUsers(): UserRecord[] {
   try {
@@ -54,6 +59,35 @@ function saveUsers(users: UserRecord[]) {
 
 function hashPassword(pass: string): string {
   return crypto.createHash('sha256').update(pass + 'fixcat-salt-2026').digest('hex');
+}
+
+// Resolve the currently logged-in username from the Authorization header
+function currentUserFromReq(req: any): string | null {
+  const tokenHeader = req.headers.authorization?.replace('Bearer ', '');
+  if (!tokenHeader) return null;
+  return sessions.get(tokenHeader) || null;
+}
+
+// Auth middleware for protected APIs
+function requireAuth(req: any, res: any, next: () => void) {
+  const username = currentUserFromReq(req);
+  if (!username) {
+    return res.status(401).json({ error: 'Не авторизован. Выполните вход заново.' });
+  }
+  (req as any).username = username;
+  next();
+}
+
+// Require admin role for user-management APIs
+function requireAdmin(req: any, res: any, next: () => void) {
+  const username = currentUserFromReq(req);
+  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  const user = getUsers().find((u) => u.username === username);
+  if (!user || (user.role || 'admin') !== 'admin') {
+    return res.status(403).json({ error: 'Требуются права администратора.' });
+  }
+  (req as any).username = username;
+  next();
 }
 
 // In-memory telemetry history for real system charts
@@ -484,16 +518,18 @@ setInterval(async () => {
   }
 }, 2000);
 
-// --- AUTH ENDPOINTS ---
+// --- AUTH & USER MANAGEMENT ENDPOINTS ---
 app.get('/api/auth/status', (req, res) => {
   const users = getUsers();
-  const tokenHeader = req.headers.authorization?.replace('Bearer ', '');
-  const isAuthenticated = Boolean(activeSessionToken && tokenHeader === activeSessionToken);
+  const username = currentUserFromReq(req);
+  const isAuthenticated = Boolean(username);
+  const user = isAuthenticated ? users.find((u) => u.username === username) : undefined;
 
   res.json({
     isRegistered: users.length > 0,
     isAuthenticated,
-    username: isAuthenticated ? activeSessionUsername : null,
+    username: isAuthenticated ? username : null,
+    role: user?.role || null,
   });
 });
 
@@ -512,16 +548,20 @@ app.post('/api/auth/register', (req, res) => {
     username,
     passwordHash: hashPassword(password),
     createdAt: new Date().toISOString(),
+    role: 'admin',
+    status: 'active',
+    lastLoginAt: new Date().toISOString(),
   };
 
   saveUsers([newUser]);
-  activeSessionToken = crypto.randomUUID();
-  activeSessionUsername = username;
+  const token = crypto.randomUUID();
+  sessions.set(token, username);
 
   res.json({
     success: true,
-    token: activeSessionToken,
+    token,
     username,
+    role: 'admin',
     message: 'Администратор Fixcat OS Manager успешно создан!',
   });
 });
@@ -534,22 +574,157 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'Неверный логин или пароль' });
   }
+  if ((user.status || 'active') === 'disabled') {
+    return res.status(403).json({ error: 'Учётная запись отключена администратором' });
+  }
 
-  activeSessionToken = crypto.randomUUID();
-  activeSessionUsername = username;
+  user.lastLoginAt = new Date().toISOString();
+  saveUsers(users);
+
+  const token = crypto.randomUUID();
+  sessions.set(token, username);
 
   res.json({
     success: true,
-    token: activeSessionToken,
+    token,
     username,
+    role: user.role || 'user',
     message: 'Успешный вход в систему!',
   });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  activeSessionToken = null;
-  activeSessionUsername = null;
+  const tokenHeader = req.headers.authorization?.replace('Bearer ', '');
+  if (tokenHeader) sessions.delete(tokenHeader);
   res.json({ success: true });
+});
+
+// List all users (admin only)
+app.get('/api/users', requireAdmin, (req, res) => {
+  const users = getUsers().map(({ passwordHash: _ph, ...u }) => ({ ...u }));
+  res.json({ users });
+});
+
+// Create user (admin only)
+app.post('/api/users', requireAdmin, (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Имя пользователя и пароль обязательны' });
+  }
+  if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) {
+    return res.status(400).json({ error: 'Логин: 3-32 символа, только буквы, цифры, точка, дефис, подчёркивание' });
+  }
+  if (password.length < 4) {
+    return res.status(400).json({ error: 'Пароль должен быть не короче 4 символов' });
+  }
+
+  const users = getUsers();
+  if (users.some((u) => u.username === username)) {
+    return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
+  }
+
+  const newUser: UserRecord = {
+    username,
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+    role: role === 'admin' ? 'admin' : 'user',
+    status: 'active',
+  };
+  saveUsers([...users, newUser]);
+
+  res.json({ success: true, user: { ...newUser, passwordHash: undefined } });
+});
+
+// Update user (admin only) — rename, password, role, status
+app.put('/api/users/:username', requireAdmin, (req, res) => {
+  const { username: current } = req.params;
+  const { username: newName, password, role, status } = req.body;
+  const me = (req as any).username as string;
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.username === current);
+
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Пользователь не найден' });
+  }
+
+  // Guards
+  if (current === me && role && role !== 'admin') {
+    return res.status(400).json({ error: 'Нельзя снять себе права администратора' });
+  }
+  if (current === me && status === 'disabled') {
+    return res.status(400).json({ error: 'Нельзя отключить собственную учётную запись' });
+  }
+  if (users[idx].role === 'admin' && role !== 'admin' && users.filter((u) => (u.role || 'admin') === 'admin').length <= 1) {
+    return res.status(400).json({ error: 'Нельзя удалить последнего администратора' });
+  }
+
+  if (newName && newName !== current) {
+    if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(newName)) {
+      return res.status(400).json({ error: 'Логин: 3-32 символа, только буквы, цифры, точка, дефис, подчёркивание' });
+    }
+    if (users.some((u) => u.username === newName)) {
+      return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
+    }
+    users[idx].username = newName;
+    // re-bind live session
+    for (const [token, uname] of sessions.entries()) {
+      if (uname === current) sessions.set(token, newName);
+    }
+  }
+
+  if (password && password.length >= 4) {
+    users[idx].passwordHash = hashPassword(password);
+  }
+  if (role === 'admin' || role === 'user') users[idx].role = role;
+  if (status === 'active' || status === 'disabled') users[idx].status = status;
+
+  saveUsers(users);
+  res.json({ success: true, user: { ...users[idx], passwordHash: undefined } });
+});
+
+// Delete user (admin only) — cannot delete self or last admin
+app.delete('/api/users/:username', requireAdmin, (req, res) => {
+  const { username } = req.params;
+  const me = (req as any).username as string;
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.username === username);
+
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Пользователь не найден' });
+  }
+  if (username === me) {
+    return res.status(400).json({ error: 'Нельзя удалить собственную учётную запись' });
+  }
+  if (users[idx].role === 'admin' && users.filter((u) => (u.role || 'admin') === 'admin').length <= 1) {
+    return res.status(400).json({ error: 'Нельзя удалить последнего администратора' });
+  }
+
+  const [removed] = users.splice(idx, 1);
+  for (const [token, uname] of sessions.entries()) {
+    if (uname === removed.username) sessions.delete(token);
+  }
+  saveUsers(users);
+  res.json({ success: true, deleted: removed.username });
+});
+
+// Change own password (any authenticated user)
+app.post('/api/auth/change-password', requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const me = (req as any).username as string;
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.username === me);
+
+  if (idx === -1) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (users[idx].passwordHash !== hashPassword(String(currentPassword || ''))) {
+    return res.status(400).json({ error: 'Текущий пароль неверен' });
+  }
+  if (!newPassword || String(newPassword).length < 4) {
+    return res.status(400).json({ error: 'Новый пароль должен быть не короче 4 символов' });
+  }
+
+  users[idx].passwordHash = hashPassword(String(newPassword));
+  saveUsers(users);
+  res.json({ success: true, message: 'Пароль успешно изменён' });
 });
 
 // --- INSTALLER & EXPORT KIT ENDPOINTS ---
@@ -1034,6 +1209,44 @@ app.post('/api/on-device-ai/chat', async (req, res) => {
 // --- API ENDPOINTS ---
 
 // 1. Real System specs, host status & GPU info
+// Aggregate real disk usage for the root filesystem
+function getDiskUsage() {
+  try {
+    const s = fs.statfsSync('/');
+    const total = s.bsize * s.blocks;
+    const free = s.bsize * s.bavail;
+    const used = total - free;
+    return {
+      total,
+      used,
+      free,
+      percent: total > 0 ? Number(((used / total) * 100).toFixed(1)) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Aggregate real network RX/TX totals from /proc/net/dev
+function getNetworkTotals() {
+  let rx = 0;
+  let tx = 0;
+  try {
+    const content = fs.readFileSync('/proc/net/dev', 'utf-8');
+    for (const line of content.split('\n').slice(2)) {
+      const m = line.trim().match(/^([\w.-]+):\s+(\d+)\s+(\d+).*?(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$/);
+      if (!m) continue;
+      const iface = m[1];
+      if (iface === 'lo' || iface === 'docker0' || iface?.startsWith('veth') || iface?.startsWith('br-')) continue;
+      rx += parseInt(m[2], 10) || 0;
+      tx += parseInt(m[10], 10) || 0;
+    }
+  } catch {
+    // ignore
+  }
+  return { rx, tx };
+}
+
 app.get('/api/system', async (req, res) => {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
@@ -1043,6 +1256,7 @@ app.get('/api/system', async (req, res) => {
   const gpus = await getGpuStats();
 
   res.json({
+    app: { name: 'Fixcat OS Manager', version: appVersion },
     hostname: os.hostname(),
     platform: os.platform(),
     arch: os.arch(),
@@ -1059,6 +1273,8 @@ app.get('/api/system', async (req, res) => {
       used: usedMem,
       percent: Number(((usedMem / totalMem) * 100).toFixed(1)),
     },
+    disk: getDiskUsage(),
+    network: getNetworkTotals(),
     gpus,
     loadAvg: os.loadavg(),
     networkInterfaces: os.networkInterfaces(),

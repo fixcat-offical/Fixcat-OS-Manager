@@ -123,4 +123,13 @@ export interface AuthStatus {
   isRegistered: boolean;
   isAuthenticated: boolean;
   username?: string;
+  role?: 'admin' | 'user' | null;
+}
+
+export interface UserRecord {
+  username: string;
+  createdAt: string;
+  role?: 'admin' | 'user';
+  status?: 'active' | 'disabled';
+  lastLoginAt?: string;
 }

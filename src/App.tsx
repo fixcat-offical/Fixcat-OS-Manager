@@ -13,6 +13,7 @@ import { OnDeviceAiView } from './components/OnDeviceAiView';
 import { InstallerExportView } from './components/InstallerExportView';
 import { ModulesView } from './components/ModulesView';
 import { AutostartView } from './components/AutostartView';
+import { UsersView } from './components/UsersView';
 import { AuthView } from './components/AuthView';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
@@ -60,6 +61,7 @@ export default function App() {
           isRegistered: data.isRegistered,
           isAuthenticated: data.isAuthenticated,
           username: data.username,
+          role: data.role,
         });
       }
     } catch {
@@ -83,7 +85,7 @@ export default function App() {
       if (res.ok && data.token) {
         localStorage.setItem('fixcat_auth_token', data.token);
         setAuthToken(data.token);
-        setAuthStatus({ isRegistered: true, isAuthenticated: true, username: data.username });
+        setAuthStatus({ isRegistered: true, isAuthenticated: true, username: data.username, role: data.role });
         showToast('Добро пожаловать в Fixcat OS Manager!', 'success');
         return true;
       }
@@ -105,7 +107,7 @@ export default function App() {
       if (res.ok && data.token) {
         localStorage.setItem('fixcat_auth_token', data.token);
         setAuthToken(data.token);
-        setAuthStatus({ isRegistered: true, isAuthenticated: true, username: data.username });
+        setAuthStatus({ isRegistered: true, isAuthenticated: true, username: data.username, role: data.role });
         showToast('Аккаунт администратора создан!', 'success');
         return true;
       }
@@ -324,6 +326,16 @@ export default function App() {
 
           {currentTab === 'autostart' && (
             <AutostartView />
+          )}
+
+          {currentTab === 'users' && (
+            <UsersView
+              authToken={authToken}
+              currentUser={authStatus.username || ''}
+              currentRole={authStatus.role || 'user'}
+              onUsersChanged={fetchData}
+              showToast={showToast}
+            />
           )}
 
           {currentTab === 'on-device-ai' && (
