@@ -9,7 +9,7 @@ import net from 'net';
 // =============================================================================
 // Fixcat OS Manager — Installer & Module Engine
 // Interactive config (port, dir, components), staged install,
-// live SSE logs, module catalog (OS images /  / system components).
+// live SSE logs, module catalog (OS images / system components).
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,6 @@ export interface InstallerConfig {
   installDocker: boolean;
   installNode: boolean;
   installNvidia: boolean;
-  installLms: boolean;
   preloadModules: string[];
   language: 'ru' | 'en';
   snapshotName: string;
@@ -355,15 +354,6 @@ const MODULES: ModuleDef[] = [
     kind: 'image',
   },
   {
-    id: 'ai:lmstudio-cli',
-    category: 'ai',
-    name: ' CLI (lms)',
-    description: 'CLI-клиент  для загрузки и запуска локальных нейросетей в память VRAM.',
-    icon: 'bot',
-    group: 'Локальные нейросети',
-    kind: 'cli',
-  },
-  {
     id: 'sys:docker',
     category: 'system',
     name: 'Docker Engine',
@@ -385,7 +375,7 @@ const MODULES: ModuleDef[] = [
     id: 'sys:nvidia',
     category: 'system',
     name: 'NVIDIA Container Toolkit',
-    description: 'GPU-ускорение для контейнеров и моделей  (если есть видеокарта).',
+    description: 'GPU-ускорение для контейнеров (если есть видеокарта).',
     icon: 'nvidia',
     group: 'Системные компоненты',
     kind: 'service',
@@ -410,10 +400,6 @@ async function getModuleStatus(def: ModuleDef): Promise<ModuleStatusResult> {
     return { installed: false, detail: 'Образ не загружен' };
   }
 
-  if (def.id === 'ai:lmstudio-cli') {
-    const ok = await commandExists('lms');
-    return ok ? { installed: true, detail: 'lms установлен' } : { installed: false, detail: 'lms не найден' };
-  }
   if (def.id === 'sys:docker') {
     const ok = await isDockerRunning();
     return ok ? { installed: true, detail: 'Docker daemon активен' } : { installed: false, detail: 'Docker не установлен / выключен' };
@@ -466,18 +452,6 @@ async function moduleInstall(def: ModuleDef): Promise<void> {
       if (r.code !== 0) throw new Error(`Не удалось загрузить образ ${def.image}`);
       logSucc(`Образ «${def.name}» загружен.`);
       moduleStates[def.id] = { status: 'done', message: 'Образ установлен' };
-    } else if (def.id === 'ai:lmstudio-cli') {
-      logInfo('Установка  CLI (lms)...');
-      const r = await runBash(
-        'curl -fsSL https://lmstudio.ai/install | sh'
-      );
-      if (r.code !== 0) {
-        logWarn('Автоустановка lms не удалась — установите  вручную и включите CLI.');
-        moduleStates[def.id] = { status: 'warn', message: 'Нужна ручная установка' };
-      } else {
-        logSucc(' CLI установлен.');
-        moduleStates[def.id] = { status: 'done', message: 'lms установлен' };
-      }
     } else {
       moduleStates[def.id] = { status: 'done', message: 'Компонент проверен' };
     }
@@ -695,28 +669,6 @@ async function stepNvidia(): Promise<void> {
   logSucc('NVIDIA Container Toolkit настроен.');
 }
 
-async function stepLms(): Promise<void> {
-  if (await commandExists('lms')) {
-    logSucc(' CLI (lms) уже установлен.');
-    setStepStatus('lms', 'done');
-    return;
-  }
-  if (!installerState.config!.installLms) {
-    logWarn('Установка  CLI отключена в настройках.');
-    setStepStatus('lms', 'skipped', 'отключено пользователем');
-    return;
-  }
-
-  logInfo('Установка  CLI (lms)...');
-  const r = await runBash('curl -fsSL https://lmstudio.ai/install | sh');
-  if (r.code !== 0) {
-    logWarn('Автоустановка lms не удалась. CLI можно установить позже из раздела «Модули».');
-    setStepStatus('lms', 'warn', 'установите вручную');
-    return;
-  }
-  logSucc(' CLI установлен.');
-}
-
 async function stepModules(): Promise<void> {
   const selected = installerState.config!.preloadModules || [];
   if (selected.length === 0) {
@@ -831,7 +783,7 @@ async function stepSystemd(): Promise<void> {
   }
 
   const unit = `[Unit]
-Description=Fixcat OS Manager - Web Panel &  Control
+Description=Fixcat OS Manager - Web Panel for Virtual OS and Containers
 Documentation=https://github.com/fixcat-offical/Fixcat-OS-Manager
 After=network.target docker.service
 Requires=docker.service
@@ -902,9 +854,6 @@ async function stepFinish(): Promise<void> {
     logInfo(`   • Интернет:          http://${publicIp}:${port}   (если порт открыт/проброшен)`);
   }
   logInfo(`   • Данные / установка: ${cfg.dataDir} / ${cfg.installDir}`);
-  if (cfg.installLms || cfg.preloadModules.includes('ai:lmstudio-cli')) {
-    logInfo(`   •  OpenAI Proxy: http://localhost:${port}/api/on-device-ai`);
-  }
   logInfo('Для первого входа перейдите в панель и создайте администратора.');
 }
 
@@ -914,8 +863,7 @@ const STEPS: { id: string; title: string; fn: () => Promise<void> }[] = [
   { id: 'docker', title: 'Docker Engine + Compose', fn: stepDocker },
   { id: 'nodejs', title: 'Node.js LTS', fn: stepNode },
   { id: 'nvidia', title: 'NVIDIA Container Toolkit (GPU)', fn: stepNvidia },
-  { id: 'lms', title: ' CLI ()', fn: stepLms },
-  { id: 'modules', title: 'Загрузка модулей (образы ОС / AI)', fn: stepModules },
+  { id: 'modules', title: 'Загрузка модулей (образы ОС)', fn: stepModules },
   { id: 'deploy', title: 'Сборка и развертывание панели', fn: stepDeploy },
   { id: 'systemd', title: 'Служба systemd (автозапуск)', fn: stepSystemd },
   { id: 'finish', title: 'Завершение', fn: stepFinish },
@@ -943,7 +891,7 @@ async function runInstaller(cfg: InstallerConfig): Promise<void> {
 
   logInfo(`=== Запуск установщика Fixcat OS Manager (dry-run: ${cfg.dryRun ? 'да' : 'нет'}) ===`);
   logInfo(`Настройки: порт=${cfg.port}, каталог=${cfg.installDir}, данные=${cfg.dataDir}`);
-  logInfo(`Компоненты: docker=${cfg.installDocker}, node=${cfg.installNode}, nvidia=${cfg.installNvidia}, lms=${cfg.installLms}`);
+  logInfo(`Компоненты: docker=${cfg.installDocker}, node=${cfg.installNode}, nvidia=${cfg.installNvidia}`);
 
   for (let i = 0; i < STEPS.length; i++) {
     if (installerState.cancelRequested) break;
@@ -1053,7 +1001,6 @@ export function registerInstallerRoutes(app: express.Express): void {
       installDocker: body.installDocker !== false,
       installNode: body.installNode !== false,
       installNvidia: body.installNvidia !== false,
-      installLms: body.installLms !== false,
       preloadModules: Array.isArray(body.preloadModules) ? body.preloadModules : ['os:ubuntu', 'os:debian', 'os:kali', 'os:alpine', 'os:windows-xp'],
       language: body.language === 'en' ? 'en' : 'ru',
       snapshotName: String(body.snapshotName || 'default'),
@@ -1110,7 +1057,7 @@ export function getInstallerScript(): string {
 # =============================================================================
 #  Fixcat OS Manager — профессиональный установщик (интерактивный/автоматический)
 #  Авто-выбор свободного порта, выбор директорий, установка Docker / Node.js /
-#  NVIDIA Toolkit /  CLI, сборка панели, systemd-служба.
+#  NVIDIA Toolkit, сборка панели, systemd-служба.
 #
 #  Примеры:
 #    sudo bash install.sh                       # интерактивный режим
@@ -1129,7 +1076,6 @@ DRY_RUN=0
 INSTALL_DOCKER=1
 INSTALL_NODE=1
 INSTALL_NVIDIA=1
-INSTALL_LMS=1
 PRELOAD_OS=1
 
 # ---------- аргументы командной строки ----------
@@ -1150,7 +1096,6 @@ while [[ $# -gt 0 ]]; do
     --no-docker)   INSTALL_DOCKER=0; shift ;;
     --no-node)     INSTALL_NODE=0; shift ;;
     --no-nvidia)   INSTALL_NVIDIA=0; shift ;;
-    --no-lms)      INSTALL_LMS=0; shift ;;
     --no-images)   PRELOAD_OS=0; shift ;;
     -h|--help)     grep "^#" "$0"; exit 0 ;;
     *) echo "❌ Неизвестный аргумент: $1"; exit 1 ;;
@@ -1384,17 +1329,7 @@ else
   ok "NVIDIA Container Toolkit настроен."
 fi
 
-step "6/10 —  CLI ()"
-if command -v lms >/dev/null 2>&1; then
-  ok "lms уже установлен."
-elif [[ "$INSTALL_LMS" == "0" ]]; then
-  warn "Установка lms пропущена (флаг --no-lms)."
-else
-  exec_cmd curl -fsSL https://lmstudio.ai/install | sh || warn "Автоустановка lms не удалась — CLI можно поставить позже из раздела «Модули»."
-  ok " CLI готов."
-fi
-
-step "7/10 — Модули панели (образы ОС)"
+step "6/10 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
   IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
   for img in "\${IMAGES[@]}"; do
@@ -1410,7 +1345,7 @@ else
   warn "Загрузка образов пропущена или Docker недоступен."
 fi
 
-step "8/10 — Сборка панели"
+step "7/10 — Сборка панели"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
 cd "$INSTALL_DIR"
 if [[ "$DRY_RUN" != "1" ]]; then
@@ -1441,11 +1376,11 @@ else
   info "[DRY-RUN] git clone / npm run build / .env — без изменений."
 fi
 
-step "9/10 — Служба systemd"
+step "8/10 — Служба systemd"
 if [[ -d /run/systemd/system ]]; then
   cat > /etc/systemd/system/fixcat.service <<EOF
 [Unit]
-Description=Fixcat OS Manager - Web Panel &  Control
+Description=Fixcat OS Manager - Web Panel for Virtual OS and Containers
 After=network.target docker.service
 Requires=docker.service
 
@@ -1472,7 +1407,7 @@ else
   warn "systemd не найден — запустите вручную: cd $INSTALL_DIR && NODE_ENV=production node dist/server.js"
 fi
 
-step "10/10 — Готово"
+step "9/10 — Готово"
 LOCAL_IPS=($(hostname -I 2>/dev/null))
 PUBLIC_IP=""
 PUBLIC_IP=$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || curl -fsS --max-time 4 https://ifconfig.me 2>/dev/null || echo "")

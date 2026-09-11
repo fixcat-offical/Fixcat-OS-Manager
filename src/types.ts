@@ -109,21 +109,6 @@ export interface MetricHistoryPoint {
   containers: Record<string, { cpu: number; ramMb: number }>;
 }
 
-export interface OnDeviceAiModel {
-  id: string;
-  name: string;
-  provider: string;
-  sizeGb: number;
-  ramRequiredMb: number;
-  quantization: string;
-  description: string;
-  isDownloaded: boolean;
-  downloadProgress: number; // 0-100
-  isRunning: boolean;
-  contextWindow: number;
-  endpointUrl: string;
-}
-
 export interface AuthStatus {
   isRegistered: boolean;
   isAuthenticated: boolean;

@@ -4,7 +4,6 @@ import {
   Server,
   Activity,
   Tv,
-  Bot,
   Settings,
   Package,
   Boxes,
@@ -101,14 +100,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20',
     },
     {
-      id: 'on-device-ai',
-      label: ' (Нейросети)',
-      sublabel: ' & Local LLM',
-      icon: Bot,
-      badge: 'New',
-      badgeColor: 'bg-blue-500/10 text-blue-300 border border-blue-500/20',
-    },
-    {
       id: 'users',
       label: 'Пользователи',
       sublabel: 'Учётные записи и роли',
@@ -169,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Manager
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400">Управление ОС &amp; </p>
+              <p className="text-[11px] text-slate-400">Управление ОС &amp; контейнерами</p>
             </div>
           </div>
 

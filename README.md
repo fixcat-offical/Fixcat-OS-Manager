@@ -2,7 +2,7 @@
 
 # 🖥️ Fixcat OS Manager
 
-### Веб-панель управления операционными системами в Docker и локальными нейросетями
+### Веб-панель управления операционными системами в Docker и контейнерами
 
 [![Version](https://img.shields.io/badge/version-2.6.0-blue.svg?style=for-the-badge&logo=github)](https://github.com/fixcat-offical/Fixcat-OS-Manager)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
@@ -12,8 +12,7 @@
 [![Installer](https://img.shields.io/badge/installer-Fixcat--OS--Manager-6366F1?style=for-the-badge)](install.sh)
 
 **Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP, Debian, Kali, Alpine)
-**с рабочим столом через браузер (noVNC), следите за CPU/RAM/GPU и запускайте
-локальные ИИ-модели ()** — всё в одном месте.
+**с рабочим столом через браузер (noVNC), следите за CPU/RAM/GPU и управляйте несколькими ПК** — всё в одном месте.
 
 ---
 
@@ -45,10 +44,9 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 |---|---|
 | 🐳 **Менеджер контейнеров** | Создание, запуск, пауза, удаление ВМ и ОС, логи, порты, noVNC одним кликом |
 | 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
-| 🤖 **** | Менеджер локальных нейросетей () + OpenAI-совместимый API на порту `1234` |
 | 📊 **Мониторинг** | Живые метрики CPU, RAM, Multi-GPU (NVIDIA), сеть, диск, история |
 | ⚡ **Профессиональный установщик** | Интерактивный пошаговый установщик с live-логом (SSE), выбор порта/директорий |
-| 📦 **Модули** | Каталог модулей: ОС-образы,  CLI, Docker/Node/NVIDIA — установка в один клик |
+| 📦 **Модули** | Каталог модулей: ОС-образы, Docker/Node/NVIDIA — установка в один клик |
 | 🌐 **Несколько ПК (Узлы)** | Подключение вторых панелей по IP + API-ключу: управление контейнерами, автозапуском, настройками и железом удалённого ПК через одну панель |
 | 🔐 **Авторизация** | Регистрация/вход администратора, тостовые уведомления |
 | 📱 **Адаптивный UI** | Тёмная тема, мобильное меню, Tailwind CSS |
@@ -59,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 
 ### Способ 1 — Одна команда (рекомендуется)
 
-Скрипт сам: определит ОС, поставит `Docker`, `Node.js`, `NVIDIA Toolkit`, ` CLI`,
+Скрипт сам: определит ОС, поставит `Docker`, `Node.js`, `NVIDIA Toolkit`,
 предзагрузит ОС-образы из каталога модулей, соберёт панель и создаст системную службу `systemd`.
 
 ```bash
@@ -77,7 +75,7 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 sudo bash install.sh --dry-run
 
 # Гипертонкая установка (без Docker-образов и GPU-стека):
-sudo bash install.sh --yes --no-images --no-nvidia --no-lms
+sudo bash install.sh --yes --no-images --no-nvidia
 ```
 
 Параметры скрипта:
@@ -92,7 +90,6 @@ sudo bash install.sh --yes --no-images --no-nvidia --no-lms
 | `--no-docker` | Пропустить установку Docker |
 | `--no-node` | Пропустить установку Node.js |
 | `--no-nvidia` | Пропустить NVIDIA Container Toolkit |
-| `--no-lms` | Пропустить  CLI |
 | `--no-images` | Не предзагружать ОС-образы |
 | `-h` / `--help` | Справка |
 
@@ -174,7 +171,6 @@ PORT=3000 NODE_ENV=production node dist/server.js
 | 🐟 Debian 12 XFCE | Стабильный рабочий стол | `ghcr.io/linuxserver/webtop:debian-xfce` |
 | 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop` |
 | 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `ghcr.io/linuxserver/webtop:alpine-kde` |
-| 🤖  CLI | Локальные нейросети в VRAM | `lms` CLI |
 | 🐳 Docker Engine | Базовое окружение | системный |
 | 🟩 Node.js LTS | Рантайм панели | системный |
 | 🎮 NVIDIA Toolkit | GPU в контейнерах | системный |
@@ -263,12 +259,11 @@ Fixcat-OS-Manager/
 │       ├── DashboardView.tsx      # Дашборд хоста
 │       ├── ContainersView.tsx     # Менеджер контейнеров
 │       ├── NoVncFullView.tsx      # noVNC рабочие столы
-│       ├── OnDeviceAiView.tsx        #  / 
 │       ├── ResourceMonitorView.tsx# Метрики
 │       ├── ModulesView.tsx        # Каталог модулей
 │       ├── InstallerExportView.tsx# Живой установщик + экспорт-кит
 │       └── ...
-└── data/                      # Создаётся при первом запуске (users.db, models)
+└── data/                      # Создаётся при первом запуске (users, settings, nodes)
 ```
 
 ---

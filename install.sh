@@ -2,7 +2,7 @@
 # =============================================================================
 #  Fixcat OS Manager — профессиональный установщик (интерактивный/автоматический)
 #  Авто-выбор свободного порта, выбор директорий, установка Docker / Node.js /
-#  NVIDIA Toolkit /  CLI, сборка панели, systemd-служба.
+#  NVIDIA Toolkit, сборка панели, systemd-служба.
 #
 #  Примеры:
 #    sudo bash install.sh                       # интерактивный режим
@@ -21,7 +21,6 @@ DRY_RUN=0
 INSTALL_DOCKER=1
 INSTALL_NODE=1
 INSTALL_NVIDIA=1
-INSTALL_LMS=1
 PRELOAD_OS=1
 
 # ---------- аргументы командной строки ----------
@@ -42,7 +41,6 @@ while [[ $# -gt 0 ]]; do
     --no-docker)   INSTALL_DOCKER=0; shift ;;
     --no-node)     INSTALL_NODE=0; shift ;;
     --no-nvidia)   INSTALL_NVIDIA=0; shift ;;
-    --no-lms)      INSTALL_LMS=0; shift ;;
     --no-images)   PRELOAD_OS=0; shift ;;
     -h|--help)     grep "^#" "$0"; exit 0 ;;
     *) echo "❌ Неизвестный аргумент: $1"; exit 1 ;;
@@ -276,17 +274,7 @@ else
   ok "NVIDIA Container Toolkit настроен."
 fi
 
-step "6/10 —  CLI ()"
-if command -v lms >/dev/null 2>&1; then
-  ok "lms уже установлен."
-elif [[ "$INSTALL_LMS" == "0" ]]; then
-  warn "Установка lms пропущена (флаг --no-lms)."
-else
-  exec_cmd curl -fsSL https://lmstudio.ai/install | sh || warn "Автоустановка lms не удалась — CLI можно поставить позже из раздела «Модули»."
-  ok " CLI готов."
-fi
-
-step "7/10 — Модули панели (образы ОС)"
+step "6/10 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
   IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
   for img in "${IMAGES[@]}"; do
@@ -302,7 +290,7 @@ else
   warn "Загрузка образов пропущена или Docker недоступен."
 fi
 
-step "8/10 — Сборка панели"
+step "7/10 — Сборка панели"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
 cd "$INSTALL_DIR"
 if [[ "$DRY_RUN" != "1" ]]; then
@@ -328,11 +316,11 @@ else
   info "[DRY-RUN] git clone / npm run build / .env — без изменений."
 fi
 
-step "9/10 — Служба systemd"
+step "8/10 — Служба systemd"
 if [[ -d /run/systemd/system ]]; then
   cat > /etc/systemd/system/fixcat.service <<EOF
 [Unit]
-Description=Fixcat OS Manager - Web Panel &  Control
+Description=Fixcat OS Manager - Web Panel for Virtual OS and Containers
 After=network.target docker.service
 Requires=docker.service
 
@@ -359,7 +347,7 @@ else
   warn "systemd не найден — запустите вручную: cd $INSTALL_DIR && NODE_ENV=production node dist/server.js"
 fi
 
-step "10/10 — Готово"
+step "9/10 — Готово"
 LOCAL_IPS=($(hostname -I 2>/dev/null))
 PUBLIC_IP=""
 PUBLIC_IP=$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || curl -fsS --max-time 4 https://ifconfig.me 2>/dev/null || echo "")

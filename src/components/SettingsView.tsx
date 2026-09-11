@@ -82,11 +82,6 @@ const SETTING_GROUPS: { label: string; icon: any; keys: string[] }[] = [
     keys: ['novncScaleMode', 'autoOpenNovnc'],
   },
   {
-    label: ' и ',
-    icon: Cpu,
-    keys: ['openAiUrl', 'onDeviceAiAutoStart'],
-  },
-  {
     label: 'Обновления и бэкапы',
     icon: RefreshCw,
     keys: ['updateChannel', 'enableAutoUpdateCheck', 'backupRetentionDays', 'swapAutoCleanup'],
@@ -113,8 +108,6 @@ const SETTING_LABELS: Record<string, { name: string; desc: string; type: string;
   networkPollingEnabled: { name: 'Мониторинг сети', desc: 'Отслеживать RX/TX', type: 'bool' },
   novncScaleMode: { name: 'Масштабирование noVNC', desc: 'Как вписывать VNC в окно браузера', type: 'select', options: ['fit', 'scale', 'remote'] },
   autoOpenNovnc: { name: 'Авто-открытие noVNC', desc: 'При клике на контейнер', type: 'bool' },
-  openAiUrl: { name: 'URL  API', desc: 'Endpoint ', type: 'text' },
-  onDeviceAiAutoStart: { name: 'Запуск ', desc: 'Автозапуск при старте панели', type: 'bool' },
   updateChannel: { name: 'Канал обновлений', desc: 'Git-ветка для обновления панели', type: 'select', options: ['main', 'dev', 'nightly'] },
   enableAutoUpdateCheck: { name: 'Авто-проверка обновлений', desc: 'Проверять наличие обновлений', type: 'bool' },
   backupRetentionDays: { name: 'Хранение бэкапов (дней)', desc: 'Срок жизни резервных копий', type: 'number' },

@@ -73,7 +73,6 @@ interface DiagnosticResult {
   memoryTotalGb: number;
   memoryFreeGb: number;
   port3000Free: boolean;
-  port1234Free: boolean;
   readyForInstallation: boolean;
 }
 
@@ -145,7 +144,6 @@ export const InstallerExportView: React.FC = () => {
   const [installDocker, setInstallDocker] = useState(true);
   const [installNode, setInstallNode] = useState(true);
   const [installNvidia, setInstallNvidia] = useState(true);
-  const [installLms, setInstallLms] = useState(true);
   const [preloadModules, setPreloadModules] = useState<Set<string>>(
     () => new Set(IMAGE_MODULES.map((m) => m.id))
   );
@@ -298,7 +296,6 @@ export const InstallerExportView: React.FC = () => {
           installDocker,
           installNode,
           installNvidia,
-          installLms,
           preloadModules: Array.from(preloadModules),
           dryRun,
         }),
@@ -323,7 +320,7 @@ export const InstallerExportView: React.FC = () => {
 # ==============================================================================
 # Fixcat OS Manager — профессиональный установщик
 # Этот файл скачивается командой: curl -fsSL <host>/api/installer/script
-# Интерактивный режим, автовыбор порта, установка Docker/Node/NVIDIA/,
+# Интерактивный режим, автовыбор порта, установка Docker/Node/NVIDIA,
 # предзагрузка модулей (образов ОС), сборка панели и systemd-служба.
 #
 # Запуск:  sudo bash fixcat-install.sh
@@ -342,7 +339,6 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"       # Веб-панель и noVNC
-      - "1234:1234"       #  OpenAI-совместимый API
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   # Управление Docker хоста
       - ./data:/app/data                             # База данных / конфигурация
@@ -383,7 +379,7 @@ COPY --from=builder /app/node_modules ./node_modules
 
 RUN mkdir -p /app/data
 
-EXPOSE 3000 1234
+EXPOSE 3000
 
 CMD ["node", "dist/server.js"]
 `;
@@ -430,7 +426,7 @@ if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
 $TargetDir = "C:\\FixcatOSManager"
 New-Item -ItemType Directory -Path "$TargetDir\\data" -Force | Out-Null
 
-docker run -d --name fixcat-os-manager -p 3000:3000 -p 1234:1234 -v //var/run/docker.sock:/var/run/docker.sock -v "$TargetDir/data:/app/data" fixcat/os-manager:latest
+docker run -d --name fixcat-os-manager -p 3000:3000 -v //var/run/docker.sock:/var/run/docker.sock -v "$TargetDir/data:/app/data" fixcat/os-manager:latest
 
 Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor Green
 `;
@@ -440,7 +436,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     "id": "fixcat-os-manager",
     "name": "Fixcat OS Manager",
     "version": "2.6.0",
-    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами, локальными нейросетями ( /  Proxy) и встроенным пошаговым установщиком",
+    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами, контейнерами и встроенным пошаговым установщиком",
     "license": "MIT",
     "author": "Fixcat Dev Team"
   },
@@ -457,21 +453,19 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     "stream": "/api/installer/stream (SSE)",
     "status": "/api/installer/status",
     "modules": "/api/modules",
-    "mode": "интерактивный выбор порта/директории, установка Docker/Node/NVIDIA/, предзагрузка ОС-модулей, systemd"
+    "mode": "интерактивный выбор порта/директории, установка Docker/Node/NVIDIA, предзагрузка ОС-модулей, systemd"
   },
   "dependencies": {
     "system": ["Docker Engine 24+", "NVIDIA Container Toolkit (Optional for GPU)", "Node.js 18+"],
     "ports": [
-      { "port": 3000, "protocol": "TCP", "description": "Web GUI Control Panel & noVNC proxy" },
-      { "port": 1234, "protocol": "TCP", "description": "OpenAI-Compatible  Proxy API" }
+      { "port": 3000, "protocol": "TCP", "description": "Web GUI Control Panel & noVNC proxy" }
     ]
   },
   "components": [
     { "name": "InstallerEngine", "description": "Пошаговый установщик с streaming-логами (SSE)" },
-    { "name": "ModulesStore", "description": "Каталог модулей: ОС-образы,  CLI, системные компоненты" },
+    { "name": "ModulesStore", "description": "Каталог модулей: ОС-образы и системные компоненты" },
     { "name": "DashboardView", "description": "Дашборд хоста: CPU, RAM, Multi-GPU, списки ОС" },
-    { "name": "ContainersView", "description": "Управление контейнерами Docker, порты, логи, старт/стоп" },
-    { "name": "OnDeviceAiView", "description": "Менеджер локальных нейросетей , вызов API, модели" }
+    { "name": "ContainersView", "description": "Управление контейнерами Docker, порты, логи, старт/стоп" }
   ],
   "supportedOS": [
     "Ubuntu Desktop (dorowu/ubuntu-desktop-lxde-vnc)",
@@ -550,7 +544,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
             Пошаговая установка: свой порт, своя директория, установка
-            Docker / Node.js / NVIDIA Toolkit /  CLI, предзагрузка ОС-модулей,
+            Docker / Node.js / NVIDIA Toolkit, предзагрузка ОС-модулей,
             продакшн-сборка панели и автозапуск systemd. Все шаги выполняются на этом
             сервере с живым логом прямо в браузере.
           </p>
@@ -641,7 +635,6 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
             {toggle('Docker Engine', installDocker, setInstallDocker, running)}
             {toggle('Node.js LTS', installNode, setInstallNode, running)}
             {toggle('NVIDIA Toolkit', installNvidia, setInstallNvidia, running)}
-            {toggle(' CLI', installLms, setInstallLms, running)}
             {toggle('🛡 Dry-run (тест)', dryRun, setDryRun, running)}
           </div>
         </div>
@@ -944,7 +937,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
         <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2 leading-relaxed">
           <p>
             <b>1.</b> На этой машине — настройте параметры и нажмите <b className="text-blue-300">«Запустить установку»</b>.
-            Процедура выполнит проверки, поставит Docker/Node.js/GPU/, предзагрузит ОС-модули,
+            Процедура выполнит проверки, поставит Docker/Node.js/GPU-драйверы, предзагрузит ОС-модули,
             соберёт панель и создаст службу systemd с выбранным портом.
           </p>
           <p>

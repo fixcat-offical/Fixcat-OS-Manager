@@ -73,11 +73,6 @@ export const Header: React.FC<HeaderProps> = ({
           title: 'Автозагрузки',
           subtitle: 'Автозапуск контейнеров при старте хоста',
         };
-      case 'on-device-ai':
-        return {
-          title: ' (Нейросети)',
-          subtitle: 'Интеграция с , каталог моделей и чат',
-        };
       case 'users':
         return {
           title: 'Управление пользователями',
@@ -109,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
           subtitle: 'Генерация скрипта установки Fixcat OS Manager',
         };
       default:
-        return { title: 'Fixcat OS Manager', subtitle: 'Docker &  Management' };
+        return { title: 'Fixcat OS Manager', subtitle: 'Docker & Контейнеры' };
     }
   };
 

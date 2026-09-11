@@ -226,7 +226,7 @@ export const ModulesView: React.FC = () => {
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
             Готовые виртуальные ОС (Ubuntu, Windows XP, Debian, Kali, Alpine) с доступом
-            через noVNC, локальные нейросети  и системные компоненты. Установите
+            через noVNC и системные компоненты. Установите
             модуль одним кликом — он появится в списке контейнеров.
           </p>
 

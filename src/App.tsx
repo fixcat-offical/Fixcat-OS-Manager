@@ -9,7 +9,6 @@ import { NoVncModal } from './components/NoVncModal';
 import { LogsModal } from './components/LogsModal';
 import { DeployModal } from './components/DeployModal';
 import { SettingsView } from './components/SettingsView';
-import { OnDeviceAiView } from './components/OnDeviceAiView';
 import { InstallerExportView } from './components/InstallerExportView';
 import { ModulesView } from './components/ModulesView';
 import { AutostartView } from './components/AutostartView';
@@ -436,10 +435,6 @@ export default function App() {
               onUsersChanged={fetchData}
               showToast={showToast}
             />
-          )}
-
-          {currentTab === 'on-device-ai' && (
-            <OnDeviceAiView hostIp={systemInfo?.config?.hostIp || 'localhost'} />
           )}
 
           {currentTab === 'modules' && (

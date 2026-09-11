@@ -360,7 +360,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>Мониторинг видеокарт GPU {gpus.length > 0 && `(${gpus.length} ускорителя)`}</span>
           </h2>
           <span className="text-xs text-slate-400 font-mono">
-            {gpus.length > 0 ? (gpus[0].name.includes('NVIDIA') ? 'NVIDIA CUDA &  Acceleration' : 'Intel Integrated GPU') : 'Видеокарта не обнаружена'}
+            {gpus.length > 0 ? (gpus[0].name.includes('NVIDIA') ? 'NVIDIA CUDA GPU' : 'Intel Integrated GPU') : 'Видеокарта не обнаружена'}
           </span>
         </div>
 
