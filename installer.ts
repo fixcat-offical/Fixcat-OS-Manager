@@ -1127,7 +1127,14 @@ PRELOAD_OS=1
 # ---------- аргументы командной строки ----------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --port)        PORT="$2"; shift 2 ;;
+    --port)
+      if [[ "$2" =~ ^[0-9]+$ ]] && (( $2 >= 1024 && $2 <= 65535 )); then
+        PORT="$2"
+      else
+        warn "Некорректный --port: «$2» — используются 3000"
+      fi
+      shift 2
+      ;;
     --dir)         INSTALL_DIR="$2"; DATA_DIR="$2/data"; shift 2 ;;
     --data-dir)    DATA_DIR="$2"; shift 2 ;;
     --yes|-y)      ASSUME_YES=1; shift ;;
@@ -1252,6 +1259,12 @@ pick_port() {
     local want
     read -r -p "🔌 Введите порт веб-панели [сейчас: $PORT, пусто=оставить]: " want
     [[ -n "$want" ]] && PORT="$want"
+    # валидация: только число, 1024-65535
+    if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1024 || PORT > 65535 )); then
+      warn "Некорректный порт: «$PORT» — введите число от 1024 до 65535"
+      PORT="3000"
+      continue
+    fi
     if port_free "$PORT"; then ok "Порт $PORT свободен."; return; fi
     warn "Порт $PORT занят. Ищу ближайший свободный..."
     for p in $(seq $((PORT+1)) 60100); do
