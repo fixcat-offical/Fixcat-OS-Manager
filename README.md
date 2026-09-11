@@ -167,12 +167,12 @@ PORT=3000 NODE_ENV=production node dist/server.js
 | Модуль | Назначение | Ресурс |
 |--------|-----------|--------|
 | 🐧 Ubuntu 24.04 Desktop | Полный рабочий стол XFCE + noVNC (логин/пароль: headless) | `accetto/ubuntu-vnc-xfce-g3` |
-| 🪟 Windows XP Professional | Классическая WinXP в QEMU (dockur) | `dockurr/windows` |
-| 🪟 Windows 7 Ultimate | Windows 7 SP1 в QEMU (dockur) | `dockurr/windows` |
-| 🪟 Windows 8.1 Enterprise | Windows 8.1 в QEMU (dockur) | `dockurr/windows` |
-| 🪟 Windows 10 Pro | Windows 10 в QEMU (dockur) | `dockurr/windows` |
+| 🪟 Windows XP Professional | Классическая WinXP в QEMU + noVNC (ISO ~0.6GB, автозагрузка) | `dockurr/windows` |
+| 🪟 Windows 7 Ultimate | Windows 7 SP1 в QEMU + noVNC (ISO ~3.1GB, автозагрузка) | `dockurr/windows` |
+| 🪟 Windows 8.1 Enterprise | Windows 8.1 в QEMU + noVNC (ISO ~3.7GB, автозагрузка) | `dockurr/windows` |
+| 🪟 Windows 10 Pro | Windows 10 в QEMU + noVNC (ISO ~5.7GB, автозагрузка) | `dockurr/windows` |
 | 🐟 Debian 12 XFCE | Стабильный рабочий стол | `ghcr.io/linuxserver/webtop:debian-xfce` |
-| 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop` |
+| 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop:1.16.0` |
 | 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `ghcr.io/linuxserver/webtop:alpine-kde` |
 | 🐳 Docker Engine | Базовое окружение | системный |
 | 🟩 Node.js LTS | Рантайм панели | системный |

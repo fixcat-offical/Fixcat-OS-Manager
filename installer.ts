@@ -317,7 +317,7 @@ const MODULES: ModuleDef[] = [
     icon: 'windows-xp',
     group: 'Операционные системы',
     image: 'dockurr/windows:latest',
-    sizeLabel: '~6 GB (ISO при первом запуске)',
+    sizeLabel: '~0.6 GB образ + ISO при первом запуске',
     kind: 'image',
   },
   {
@@ -328,7 +328,7 @@ const MODULES: ModuleDef[] = [
     icon: 'windows-7',
     group: 'Операционные системы',
     image: 'dockurr/windows:latest',
-    sizeLabel: '~3.1 GB (ISO при первом запуске)',
+    sizeLabel: '~3.1 GB ISO при первом запуске',
     kind: 'image',
   },
   {
@@ -339,7 +339,7 @@ const MODULES: ModuleDef[] = [
     icon: 'windows-8',
     group: 'Операционные системы',
     image: 'dockurr/windows:latest',
-    sizeLabel: '~3.7 GB (ISO при первом запуске)',
+    sizeLabel: '~3.7 GB ISO при первом запуске',
     kind: 'image',
   },
   {
@@ -350,7 +350,7 @@ const MODULES: ModuleDef[] = [
     icon: 'windows-10',
     group: 'Операционные системы',
     image: 'dockurr/windows:latest',
-    sizeLabel: '~5.7 GB (ISO при первом запуске)',
+    sizeLabel: '~5.7 GB ISO при первом запуске',
     kind: 'image',
   },
   {

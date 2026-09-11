@@ -128,7 +128,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       vncPort: 5900,
       defaultPort: '8007',
       defaultRam: '1024',
-      desc: 'Легковесная Windows XP в контейнере dockur с встроенным noVNC-просмотрщиком.',
+      desc: 'Windows XP в контейнере dockur с встроенным noVNC (порт 8006). ISO скачивается автоматически при первом запуске.',
     },
     {
       id: 'windows-7',
@@ -140,7 +140,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       vncPort: 5900,
       defaultPort: '8008',
       defaultRam: '2048',
-      desc: 'Windows 7 Ultimate SP1 в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+      desc: 'Windows 7 Ultimate SP1 в контейнере dockur с встроенным noVNC (порт 8006). ISO скачивается автоматически.',
     },
     {
       id: 'windows-8',
@@ -152,7 +152,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       vncPort: 5900,
       defaultPort: '8009',
       defaultRam: '2048',
-      desc: 'Windows 8.1 Enterprise в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+      desc: 'Windows 8.1 Enterprise в контейнере dockur с встроенным noVNC (порт 8006). ISO скачивается автоматически.',
     },
     {
       id: 'windows-10',
@@ -164,7 +164,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       vncPort: 5900,
       defaultPort: '8010',
       defaultRam: '4096',
-      desc: 'Windows 10 Pro в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+      desc: 'Windows 10 Pro в контейнере dockur с встроенным noVNC (порт 8006). ISO скачивается автоматически.',
     },
     {
       id: 'debian',

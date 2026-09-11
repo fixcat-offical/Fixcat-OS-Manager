@@ -109,8 +109,8 @@ fi
 # ---------- 4. питание/образы ----------
 step "4/4 — Образы модулей (если нужно)"
 if [[ "$PURGE" == "1" ]] && command -v docker >/dev/null 2>&1; then
-  if confirm "Удалить также ОС-образы модулей (Ubuntu, Windows XP, Debian, Kali, Alpine)? [y/N]"; then
-    IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "dockur/windows:xp" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" )
+  if confirm "Удалить также ОС-образы модулей (Ubuntu, Windows, Debian, Kali, Alpine)? [y/N]"; then
+    IMAGES=( "accetto/ubuntu-vnc-xfce-g3:latest" "dockurr/windows:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" )
     for img in "${IMAGES[@]}"; do
       docker image rm -f "$img" >/dev/null 2>&1 && ok "Образ удалён: $img" || true
     done
