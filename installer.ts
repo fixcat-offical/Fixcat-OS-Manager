@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import net from 'net';
 
 // =============================================================================
 // Fixcat OS Manager — Installer & Module Engine
@@ -227,12 +228,48 @@ function isSystemdHost(): Promise<boolean> {
   });
 }
 
+// Все локальные IPv4-адреса (lo + интерфейсы), чтобы ловить слушателей на любом IP.
+function localIPv4s(): string[] {
+  const out = new Set<string>(['127.0.0.1']);
+  const ifs = os.networkInterfaces();
+  for (const key of Object.keys(ifs)) {
+    for (const a of ifs[key] || []) {
+      if (a.family === 'IPv4' && !a.internal && a.address) out.add(a.address);
+    }
+  }
+  return Array.from(out);
+}
+
+// Проверка порта реальным TCP-connect: если что-то принимает — порт занят.
+// (bind-проверка в некоторых виртуализациях/proot ложно «успешна».)
+function portFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const hosts = localIPv4s();
+    if (hosts.length === 0) return resolve(true);
+    let pending = hosts.length;
+    let busy = false;
+    for (const host of hosts) {
+      const sock = net.connect({ port, host });
+      let settled = false;
+      const finish = (free: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (!free) busy = true;
+        sock.destroy();
+        if (--pending === 0) resolve(!busy);
+      };
+      sock.setTimeout(400);
+      sock.once('connect', () => finish(false)); // принял соединение => слушает
+      sock.once('error', () => finish(true));     // refused => свободен
+      sock.once('timeout', () => finish(true));   // нет ответа => считаем свободным
+    }
+  });
+}
+
 async function getFreePort(desired: number): Promise<number> {
-  if (installerState.config?.dryRun) return desired;
   let port = Math.max(1024, desired);
   while (port < 65535) {
-    const r = await execP(`ss -tlnp 2>/dev/null | grep -q ':${port} ' && echo busy || echo free`);
-    if (r.stdout.trim() !== 'busy') return port;
+    if (await portFree(port)) return port;
     port++;
   }
   return desired;
@@ -841,13 +878,32 @@ WantedBy=multi-user.target
 
 async function stepFinish(): Promise<void> {
   const cfg = installerState.config!;
+  const port = cfg.port;
+
+  const lanR = await execP(`hostname -I 2>/dev/null || true`);
+  const lanIps = lanR.stdout.split(/\s+/).filter((s) => s && !s.includes(':'));
+
+  const pubR = await execP(`curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || echo ""`);
+  const publicIp = pubR.stdout.trim();
+
   logInfo('');
   logSucc('=== Установка Fixcat OS Manager завершена ===');
   logInfo('');
-  logInfo(`Веб-панель: http://<server-ip>:${cfg.port}`);
-  logInfo(`Данные: ${cfg.dataDir}`);
+  logInfo(`🌐 Ссылки для входа в веб-панель (порт ${port}):`);
+  logInfo(`   • Локально:          http://localhost:${port}`);
+  if (lanIps.length > 0) {
+    for (const ip of lanIps.slice(0, 8)) {
+      logInfo(`   • Локальная сеть:    http://${ip}:${port}`);
+    }
+  } else {
+    logInfo(`   • Локальная сеть:    http://<server-ip>:${port}`);
+  }
+  if (publicIp) {
+    logInfo(`   • Интернет:          http://${publicIp}:${port}   (если порт открыт/проброшен)`);
+  }
+  logInfo(`   • Данные / установка: ${cfg.dataDir} / ${cfg.installDir}`);
   if (cfg.installLms || cfg.preloadModules.includes('ai:lmstudio-cli')) {
-    logInfo(` OpenAI Proxy: http://<server-ip>:${cfg.port}/api/on-device-ai (порты 1234/11434 для моделей)`);
+    logInfo(`   •  OpenAI Proxy: http://localhost:${port}/api/on-device-ai`);
   }
   logInfo('Для первого входа перейдите в панель и создайте администратора.');
 }
@@ -967,13 +1023,17 @@ export function registerInstallerRoutes(app: express.Express): void {
     });
   });
 
-  app.post('/api/installer/start', (req, res) => {
+  app.post('/api/installer/start', async (req, res) => {
     if (installerState.status === 'running') {
       return res.status(409).json({ error: 'Установка уже выполняется.' });
     }
 
     const body = req.body || {};
-    const port = Math.max(1024, parseInt(body.port, 10) || 3000);
+    const requested = body.port !== undefined && body.port !== null && String(body.port).trim() !== ''
+      ? parseInt(body.port, 10)
+      : 3000;
+    // Автоподбор: если запрошенный порт занят — берём ближайший свободный.
+    const port = await getFreePort(Math.max(1024, requested || 3000));
     const installDir = String(body.installDir || '/opt/fixcat-os-manager').trim();
     const dataDir = String(body.dataDir || path.join(installDir, 'data')).trim();
     const dryRun = Boolean(body.dryRun);
@@ -1161,11 +1221,22 @@ banner() {
 }
 
 port_free() {
-  if command -v ss >/dev/null 2>&1; then
-    ! ss -tlnp 2>/dev/null | grep -q ":$1 "
-  else
-    ! netstat -tlnp 2>/dev/null | grep -q ":$1 "
+  local p="$1" ip busy=0
+  # ss/netstat могут отсутствовать или не видеть /proc — не ждём их вечно
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout 2 ss -tlnp 2>/dev/null | grep -q "\\s$p\\s"; then return 1; fi
+    if timeout 2 netstat -tlnp 2>/dev/null | grep -q "\\s$p\\s"; then return 1; fi
+  elif command -v ss >/dev/null 2>&1; then
+    if ss -tlnp 2>/dev/null | grep -q "\\s$p\\s"; then return 1; fi
+  elif command -v netstat >/dev/null 2>&1; then
+    if netstat -tlnp 2>/dev/null | grep -q "\\s$p\\s"; then return 1; fi
   fi
+  # Фолбэк: реальный TCP-connect к lo и ко всем внешним IPv4
+  for ip in 127.0.0.1 $(hostname -I 2>/dev/null); do
+    [[ "$ip" == *:* ]] && continue
+    if (exec 3<>/dev/tcp/"$ip"/"$p") 2>/dev/null; then exec 3>&- 3<&-; busy=1; break; fi
+  done
+  return $busy
 }
 
 pick_port() {

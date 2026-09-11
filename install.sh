@@ -121,11 +121,22 @@ banner() {
 }
 
 port_free() {
-  if command -v ss >/dev/null 2>&1; then
-    ! ss -tlnp 2>/dev/null | grep -q ":$1 "
-  else
-    ! netstat -tlnp 2>/dev/null | grep -q ":$1 "
+  local p="$1" ip busy=0
+  # ss/netstat могут отсутствовать или не видеть /proc — не ждём их вечно
+  if command -v timeout >/dev/null 2>&1; then
+    if timeout 2 ss -tlnp 2>/dev/null | grep -q "\s$p\s"; then return 1; fi
+    if timeout 2 netstat -tlnp 2>/dev/null | grep -q "\s$p\s"; then return 1; fi
+  elif command -v ss >/dev/null 2>&1; then
+    if ss -tlnp 2>/dev/null | grep -q "\s$p\s"; then return 1; fi
+  elif command -v netstat >/dev/null 2>&1; then
+    if netstat -tlnp 2>/dev/null | grep -q "\s$p\s"; then return 1; fi
   fi
+  # Фолбэк: реальный TCP-connect к lo и ко всем внешним IPv4
+  for ip in 127.0.0.1 $(hostname -I 2>/dev/null); do
+    [[ "$ip" == *:* ]] && continue
+    if (exec 3<>/dev/tcp/"$ip"/"$p") 2>/dev/null; then exec 3>&- 3<&-; busy=1; break; fi
+  done
+  return $busy
 }
 
 pick_port() {

@@ -152,15 +152,35 @@ function getGpuStats(): Promise<GpuInfo[]> {
   });
 }
 
-// Helper to check if a TCP port is free on host
+// Helper to check if a TCP port is free on host (real connect probe; bind-probe
+// lies inside proot/virtualized environments)
 function isPortAvailable(port: number): Promise<boolean> {
+  const hosts = new Set<string>(['127.0.0.1']);
+  const ifs = os.networkInterfaces();
+  for (const key of Object.keys(ifs)) {
+    for (const a of ifs[key] || []) {
+      if (a.family === 'IPv4' && !a.internal && a.address) hosts.add(a.address);
+    }
+  }
   return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => resolve(false));
-    server.once('listening', () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, '0.0.0.0');
+    let pending = hosts.size;
+    let busy = false;
+    if (pending === 0) return resolve(true);
+    for (const host of hosts) {
+      const sock = net.connect({ port, host });
+      let settled = false;
+      const finish = (free: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (!free) busy = true;
+        sock.destroy();
+        if (--pending === 0) resolve(!busy);
+      };
+      sock.setTimeout(400);
+      sock.once('connect', () => finish(false));
+      sock.once('error', () => finish(true));
+      sock.once('timeout', () => finish(true));
+    }
   });
 }
 
