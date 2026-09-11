@@ -417,7 +417,7 @@ export const ModulesView: React.FC = () => {
           <h3 className="text-sm font-bold text-white">Планируете новую систему с нуля?</h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Вкладка «Установщик» поставит Docker, Node.js, GPU-стек и предзагрузит все нужные
-            ОС-образы в один прогон — как в .
+            ОС-образы в один прогон — с нуля до готовой системы за пару кликов.
           </p>
         </div>
       </div>

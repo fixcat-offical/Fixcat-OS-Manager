@@ -321,7 +321,7 @@ export const InstallerExportView: React.FC = () => {
   // Export kit file contents
   const installShContent = `#!/usr/bin/env bash
 # ==============================================================================
-# Fixcat OS Manager — -style установщик
+# Fixcat OS Manager — профессиональный установщик
 # Этот файл скачивается командой: curl -fsSL <host>/api/installer/script
 # Интерактивный режим, автовыбор порта, установка Docker/Node/NVIDIA/,
 # предзагрузка модулей (образов ОС), сборка панели и systemd-служба.
@@ -440,7 +440,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     "id": "fixcat-os-manager",
     "name": "Fixcat OS Manager",
     "version": "2.6.0",
-    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами, локальными нейросетями ( /  Proxy) и встроенным -style установщиком",
+    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами, локальными нейросетями ( /  Proxy) и встроенным пошаговым установщиком",
     "license": "MIT",
     "author": "Fixcat Dev Team"
   },
@@ -457,7 +457,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     "stream": "/api/installer/stream (SSE)",
     "status": "/api/installer/status",
     "modules": "/api/modules",
-    "mode": "-style: интерактивный выбор порта/директории, установка Docker/Node/NVIDIA/, предзагрузка ОС-модулей, systemd"
+    "mode": "интерактивный выбор порта/директории, установка Docker/Node/NVIDIA/, предзагрузка ОС-модулей, systemd"
   },
   "dependencies": {
     "system": ["Docker Engine 24+", "NVIDIA Container Toolkit (Optional for GPU)", "Node.js 18+"],
@@ -467,7 +467,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     ]
   },
   "components": [
-    { "name": "InstallerEngine", "description": "-style пошаговый установщик с streaming-логами (SSE)" },
+    { "name": "InstallerEngine", "description": "Пошаговый установщик с streaming-логами (SSE)" },
     { "name": "ModulesStore", "description": "Каталог модулей: ОС-образы,  CLI, системные компоненты" },
     { "name": "DashboardView", "description": "Дашборд хоста: CPU, RAM, Multi-GPU, списки ОС" },
     { "name": "ContainersView", "description": "Управление контейнерами Docker, порты, логи, старт/стоп" },
@@ -537,7 +537,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
         <div className="relative z-10 space-y-3 max-w-3xl">
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-semibold">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>-style установщик</span>
+            <span>Установщик Fixcat OS Manager</span>
             <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
               <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
               {connected ? 'SSE connected' : 'SSE offline'}
@@ -549,7 +549,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
           </h1>
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Пошаговая установка как в : свой порт, своя директория, установка
+            Пошаговая установка: свой порт, своя директория, установка
             Docker / Node.js / NVIDIA Toolkit /  CLI, предзагрузка ОС-модулей,
             продакшн-сборка панели и автозапуск systemd. Все шаги выполняются на этом
             сервере с живым логом прямо в браузере.
@@ -949,7 +949,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
           </p>
           <p>
             <b>2.</b> На другом сервере — выполните <code className="text-emerald-300"> {oneLinerCommand} </code>
-            для интерактивного <b>-style</b> установщика (выбор порта, директории, компонентов).
+            для интерактивного <b>пошагового</b> установщика (выбор порта, директории, компонентов).
           </p>
           <p>
             <b>3.</b> Для дистрибутива — скопируйте файлы из раздела выше (<code>install.sh</code>,

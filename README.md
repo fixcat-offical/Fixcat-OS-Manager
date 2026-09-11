@@ -9,7 +9,7 @@
 [![Node](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
-[![-style](https://img.shields.io/badge/installer---style-6366F1?style=for-the-badge)](install.sh)
+[![Installer](https://img.shields.io/badge/installer-Fixcat--OS--Manager-6366F1?style=for-the-badge)](install.sh)
 
 **Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP, Debian, Kali, Alpine)
 **с рабочим столом через браузер (noVNC), следите за CPU/RAM/GPU и запускайте
@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 | 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
 | 🤖 **** | Менеджер локальных нейросетей () + OpenAI-совместимый API на порту `1234` |
 | 📊 **Мониторинг** | Живые метрики CPU, RAM, Multi-GPU (NVIDIA), сеть, диск, история |
-| ⚡ **Установщик -style** | Интерактивный пошаговый установщик с live-логом (SSE), выбор порта/директорий |
+| ⚡ **Профессиональный установщик** | Интерактивный пошаговый установщик с live-логом (SSE), выбор порта/директорий |
 | 📦 **Модули** | Каталог модулей: ОС-образы,  CLI, Docker/Node/NVIDIA — установка в один клик |
 | 🔐 **Авторизация** | Регистрация/вход администратора, тостовые уведомления |
 | 📱 **Адаптивный UI** | Тёмная тема, мобильное меню, Tailwind CSS |

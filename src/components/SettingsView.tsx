@@ -140,7 +140,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const laptopRunCommand = `# Запуск панели на ноутбуке с прямым доступом к Docker сокету:
 docker run -d \\
-  --name -os-manager \\
+  --name fixcat-os-manager \\
   -p 3000:3000 \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   --restart unless-stopped \\

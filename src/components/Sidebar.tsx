@@ -118,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'installer',
       label: 'Установщик & Экспорт',
-      sublabel: '-style установка и скрипты',
+      sublabel: 'Пошаговая установка и скрипты',
       icon: Package,
       badge: 'Kit',
       badgeColor: 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20',

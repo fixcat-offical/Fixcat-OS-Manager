@@ -1858,7 +1858,7 @@ app.post('/api/containers/create', async (req, res) => {
   });
 });
 
-// --- INSTALLER & MODULES ROUTES (-style installer engine) ---
+// --- INSTALLER & MODULES ROUTES (Fixcat installer engine) ---
 registerInstallerRoutes(app);
 
 // Start Express + Vite

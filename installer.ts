@@ -8,7 +8,7 @@ import net from 'net';
 
 // =============================================================================
 // Fixcat OS Manager — Installer & Module Engine
-// -style: interactive config (port, dir, components), staged install,
+// Interactive config (port, dir, components), staged install,
 // live SSE logs, module catalog (OS images /  / system components).
 // =============================================================================
 
@@ -1094,13 +1094,13 @@ export function registerInstallerRoutes(app: express.Express): void {
 }
 
 // ---------------------------------------------------------------------------
-// -style interactive bash installer (served to /api/installer/script)
+// --- Interactive bash installer (served to /api/installer/script) ---
 // ---------------------------------------------------------------------------
 
 export function getInstallerScript(): string {
   return `#!/usr/bin/env bash
 # =============================================================================
-#  Fixcat OS Manager — установщик уровня  (интерактивный/автоматический)
+#  Fixcat OS Manager — профессиональный установщик (интерактивный/автоматический)
 #  Авто-выбор свободного порта, выбор директорий, установка Docker / Node.js /
 #  NVIDIA Toolkit /  CLI, сборка панели, systemd-служба.
 #
