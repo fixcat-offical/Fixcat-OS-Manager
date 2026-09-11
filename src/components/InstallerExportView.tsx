@@ -91,9 +91,9 @@ const IDLE_STATUS: InstallerStatus = {
 
 const IMAGE_MODULES = [
   { id: 'os:ubuntu', label: 'Ubuntu 22.04', image: 'dorowu/ubuntu-desktop-lxde-vnc' },
-  { id: 'os:debian', label: 'Debian 12 XFCE', image: 'webtop:debian-xfce' },
-  { id: 'os:kali', label: 'Kali Linux GUI', image: 'webtop:kali-xfce' },
-  { id: 'os:alpine', label: 'Alpine Light', image: 'webtop:alpine-xfce' },
+  { id: 'os:debian', label: 'Debian 12 XFCE', image: 'ghcr.io/linuxserver/webtop:debian-xfce' },
+  { id: 'os:kali', label: 'Kali Linux GUI', image: 'kasmweb/kali-rolling-desktop:1.16.0' },
+  { id: 'os:alpine', label: 'Alpine Light', image: 'ghcr.io/linuxserver/webtop:alpine-kde' },
   { id: 'os:windows-xp', label: 'Windows XP', image: 'dockur/windows:xp' },
 ];
 
@@ -476,9 +476,9 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
   "supportedOS": [
     "Ubuntu Desktop (dorowu/ubuntu-desktop-lxde-vnc)",
     "Windows XP (dockur/windows:xp)",
-    "Debian XFCE (lscr.io/linuxserver/webtop:debian-xfce)",
-    "Kali Linux (lscr.io/linuxserver/webtop:kali-xfce)",
-    "Alpine Linux (lscr.io/linuxserver/webtop:alpine-xfce)"
+    "Debian XFCE (ghcr.io/linuxserver/webtop:debian-xfce)",
+    "Kali Linux (kasmweb/kali-rolling-desktop:1.16.0)",
+    "Alpine Linux (ghcr.io/linuxserver/webtop:alpine-kde)"
   ]
 }`;
 

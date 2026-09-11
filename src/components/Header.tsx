@@ -60,6 +60,11 @@ export const Header: React.FC<HeaderProps> = ({
           title: 'noVNC Веб-терминал',
           subtitle: 'Удаленный доступ к графическим столам',
         };
+      case 'autostart':
+        return {
+          title: 'Автозагрузки',
+          subtitle: 'Автозапуск контейнеров при старте хоста',
+        };
       case 'on-device-ai':
         return {
           title: ' (Нейросети)',

@@ -12,6 +12,7 @@ import { SettingsView } from './components/SettingsView';
 import { OnDeviceAiView } from './components/OnDeviceAiView';
 import { InstallerExportView } from './components/InstallerExportView';
 import { ModulesView } from './components/ModulesView';
+import { AutostartView } from './components/AutostartView';
 import { AuthView } from './components/AuthView';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
@@ -319,6 +320,10 @@ export default function App() {
               containers={containers}
               onContainerAction={handleContainerAction}
             />
+          )}
+
+          {currentTab === 'autostart' && (
+            <AutostartView />
           )}
 
           {currentTab === 'on-device-ai' && (

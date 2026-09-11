@@ -78,6 +78,15 @@ let appConfig = {
   autoDetectNoVnc: true,
 };
 
+// Map OS image → internal noVNC web port + VNC port
+function getImagePorts(image: string): { web: number; vnc: number } {
+  const i = image.toLowerCase();
+  if (i.includes('kasmweb')) return { web: 6901, vnc: 5901 };
+  if (i.includes('webtop')) return { web: 3000, vnc: 5900 };
+  if (i.includes('dockur')) return { web: 8006, vnc: 5900 };
+  return { web: 80, vnc: 5900 }; // dorowu ubuntu-desktop-lxde-vnc
+}
+
 // Helper to query real GPU stats via nvidia-smi with Intel iGPU fallback
 interface GpuInfo {
   id: number;
@@ -381,6 +390,7 @@ function detectOSAndVnc(container: any) {
     version = '12';
     icon = 'debian';
     desktopEnv = 'XFCE4';
+    vncPath = '/';
     description = 'Надежная операционная система Debian Linux';
   } else if (image.includes('kali') || lowerName.includes('kali')) {
     type = 'kali';
@@ -389,6 +399,7 @@ function detectOSAndVnc(container: any) {
     version = 'Rolling';
     icon = 'kali';
     desktopEnv = 'XFCE4';
+    if (image.includes('kasmweb')) vncPath = '/vnc.html?autoconnect=1&resize=scale&password=vncpasswd';
     description = 'Специализированная ОС для аудита и информационной безопасности';
   } else if (image.includes('alpine') || lowerName.includes('alpine')) {
     type = 'alpine';
@@ -396,7 +407,8 @@ function detectOSAndVnc(container: any) {
     distro = 'Alpine';
     version = '3.19';
     icon = 'alpine';
-    desktopEnv = 'Openbox / XFCE';
+    desktopEnv = 'Openbox / KDE';
+    vncPath = '/';
     description = 'Минималистичный дистрибутив с низким потреблением RAM';
   }
 
@@ -404,7 +416,7 @@ function detectOSAndVnc(container: any) {
   const ports = container.Ports || [];
 
   if (Array.isArray(ports)) {
-    const candidates = [80, 6080, 6081, 6082, 3000, 3001, 3002, 3003, 8006, 8007, 8080];
+    const candidates = [80, 6080, 6081, 6082, 3000, 3001, 3002, 3003, 6901, 8006, 8007, 8080];
     for (const cand of candidates) {
       const p = ports.find((pt: any) => pt.PublicPort === cand || pt.PrivatePort === cand);
       if (p && p.PublicPort) {
@@ -1217,6 +1229,78 @@ app.get('/api/containers/:id/inspect', async (req, res) => {
   }
 });
 
+// 5c. Autostart (restart policy) management
+const RESTART_POLICIES = ['no', 'always', 'unless-stopped', 'on-failure'];
+
+app.get('/api/autostarts', async (req, res) => {
+  try {
+    const { statusCode, data } = await queryDockerSocket('/containers/json?all=1');
+    if (statusCode === 200 && Array.isArray(data)) {
+      const entries = await Promise.all(
+        data.map(async (c: any) => {
+          let policy = 'no';
+          let retries = 0;
+          try {
+            const insp = await queryDockerSocket(`/containers/${c.Id}/json`);
+            if (insp.statusCode === 200 && insp.data?.HostConfig?.RestartPolicy) {
+              const rp = insp.data.HostConfig.RestartPolicy;
+              policy = rp?.Name || 'no';
+              retries = rp?.MaximumRetryCount || 0;
+            }
+          } catch {}
+          return {
+            id: c.Id,
+            name: (c.Names?.[0] || c.Id).replace('/', ''),
+            image: c.Image,
+            state: c.State,
+            status: c.Status,
+            policy,
+            retries,
+          };
+        })
+      );
+      return res.json({ entries });
+    }
+  } catch (err: any) {
+    return res.status(400).json({ error: `Docker недоступен: ${err.message}` });
+  }
+  return res.status(400).json({ error: 'Docker сокет недоступен', entries: [] });
+});
+
+app.post('/api/autostarts/:id', async (req, res) => {
+  const { id } = req.params;
+  const { policy } = req.body || {};
+  if (!RESTART_POLICIES.includes(policy)) {
+    return res.status(400).json({ error: `Недопустимая политика: "${policy}". Допустимо: ${RESTART_POLICIES.join(', ')}` });
+  }
+  try {
+    const { statusCode, data } = await queryDockerSocket(`/containers/${id}/update`, 'POST', {
+      RestartPolicy: { Name: policy, MaximumRetryCount: policy === 'on-failure' ? 5 : 0 },
+    });
+    if (statusCode < 300) {
+      return res.json({ success: true, message: `Автозапуск контейнера установлен: "${policy}".` });
+    }
+    return res.status(statusCode).json({ error: data?.message || 'Не удалось обновить политику перезапуска.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Ошибка Docker сокета.' });
+  }
+});
+
+app.delete('/api/autostarts/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { statusCode, data } = await queryDockerSocket(`/containers/${id}/update`, 'POST', {
+      RestartPolicy: { Name: 'no', MaximumRetryCount: 0 },
+    });
+    if (statusCode < 300) {
+      return res.json({ success: true, message: 'Автозапуск удалён (политика "no").' });
+    }
+    return res.status(statusCode).json({ error: data?.message || 'Не удалось удалить автозапуск.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Ошибка Docker сокета.' });
+  }
+});
+
 // 6. Historical telemetry metrics
 app.get('/api/stats/history', (req, res) => {
   res.json({
@@ -1241,7 +1325,7 @@ app.post('/api/config', (req, res) => {
 
 // 8. FULL AUTOMATED Deploy OS Container with FREE PORT AUTO-DISCOVERY
 app.post('/api/containers/create', async (req, res) => {
-  const { osType, containerName, vncPort, ramMb, cpuCores, resolution } = req.body;
+  const { osType, containerName, vncPort, ramMb, cpuCores, resolution, restartPolicy } = req.body;
 
   const requestedPort = parseInt(vncPort, 10) || 6082;
   const actualPort = await getAvailablePort(requestedPort);
@@ -1251,11 +1335,14 @@ app.post('/api/containers/create', async (req, res) => {
 
   let image = 'dorowu/ubuntu-desktop-lxde-vnc:latest';
   if (osType === 'windows-xp') image = 'dockur/windows:xp';
-  if (osType === 'debian') image = 'lscr.io/linuxserver/webtop:debian-xfce';
-  if (osType === 'kali') image = 'lscr.io/linuxserver/webtop:kali-xfce';
-  if (osType === 'alpine') image = 'lscr.io/linuxserver/webtop:alpine-xfce';
+  if (osType === 'debian') image = 'ghcr.io/linuxserver/webtop:debian-xfce';
+  if (osType === 'kali') image = 'kasmweb/kali-rolling-desktop:1.16.0';
+  if (osType === 'alpine') image = 'ghcr.io/linuxserver/webtop:alpine-kde';
 
-  const dockerRunCmd = `docker run -d --name ${name} -p ${actualPort}:80 -p ${actualVncPort}:5900 -e RESOLUTION=${resolution || '1920x1080'} --memory=${ramMb || 2048}m --cpus=${cpuCores || 2} ${image}`;
+  // Different images expose noVNC/VNC on different container ports
+  const imgPorts = getImagePorts(image);
+
+  const dockerRunCmd = `docker run -d --restart=${restartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc} -e RESOLUTION=${resolution || '1920x1080'} --memory=${ramMb || 2048}m --cpus=${cpuCores || 2} ${image}`;
 
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
@@ -1276,11 +1363,12 @@ app.post('/api/containers/create', async (req, res) => {
         const createBody = {
           Image: image,
           Env: [`RESOLUTION=${resolution || '1920x1080'}`],
-          ExposedPorts: { '80/tcp': {}, '5900/tcp': {} },
+          ExposedPorts: { [`${imgPorts.web}/tcp`]: {}, [`${imgPorts.vnc}/tcp`]: {} },
           HostConfig: {
+            RestartPolicy: { Name: restartPolicy || 'no' },
             PortBindings: {
-              '80/tcp': [{ HostPort: String(actualPort) }],
-              '5900/tcp': [{ HostPort: String(actualVncPort) }],
+              [`${imgPorts.web}/tcp`]: [{ HostPort: String(actualPort) }],
+              [`${imgPorts.vnc}/tcp`]: [{ HostPort: String(actualVncPort) }],
             },
             Memory: (parseInt(ramMb, 10) || 2048) * 1024 * 1024,
           },

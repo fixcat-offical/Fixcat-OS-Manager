@@ -170,9 +170,9 @@ PORT=3000 NODE_ENV=production node dist/server.js
 |--------|-----------|--------|
 | 🐧 Ubuntu 22.04 Desktop | Полный рабочий стол LXDE + noVNC | `dorowu/ubuntu-desktop-lxde-vnc` |
 | 🪟 Windows XP Professional | Классическая WinXP в QEMU | `dockur/windows:xp` |
-| 🐟 Debian 12 XFCE | Стабильный рабочий стол | `lscr.io/linuxserver/webtop:debian-xfce` |
-| 🎯 Kali Linux GUI | Аудит безопасности | `lscr.io/linuxserver/webtop:kali-xfce` |
-| 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `lscr.io/linuxserver/webtop:alpine-xfce` |
+| 🐟 Debian 12 XFCE | Стабильный рабочий стол | `ghcr.io/linuxserver/webtop:debian-xfce` |
+| 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop` |
+| 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `ghcr.io/linuxserver/webtop:alpine-kde` |
 | 🤖  CLI | Локальные нейросети в VRAM | `lms` CLI |
 | 🐳 Docker Engine | Базовое окружение | системный |
 | 🟩 Node.js LTS | Рантайм панели | системный |
@@ -204,6 +204,9 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `GET` | `/api/modules` | Каталог модулей |
 | `POST` | `/api/modules/:id/install` | Установить модуль |
 | `POST` | `/api/modules/:id/uninstall` | Удалить модуль |
+| `GET` | `/api/autostarts` | Список политик автозапуска контейнеров |
+| `POST` | `/api/autostarts/:id` | Установить политику (`no`, `always`, `unless-stopped`, `on-failure`) |
+| `DELETE` | `/api/autostarts/:id` | Удалить автозапуск (политика `no`) |
 
 ---
 

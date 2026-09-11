@@ -314,7 +314,7 @@ const MODULES: ModuleDef[] = [
     id: 'os:windows-xp',
     category: 'os',
     name: 'Windows XP Professional SP3',
-    description: 'Классическая Windows XP в QEMU-контейнере dockur.',
+    description: 'Классическая Windows XP в QEMU-контейнере dockur (скачивается при первом запуске).',
     icon: 'windows-xp',
     group: 'Операционные системы',
     image: 'dockur/windows:xp',
@@ -325,10 +325,10 @@ const MODULES: ModuleDef[] = [
     id: 'os:debian',
     category: 'os',
     name: 'Debian 12 XFCE',
-    description: 'Стабильная ОС Debian с рабочим столом XFCE.',
+    description: 'Стабильная ОС Debian с рабочим столом XFCE и встроенным noVNC.',
     icon: 'debian',
     group: 'Операционные системы',
-    image: 'lscr.io/linuxserver/webtop:debian-xfce',
+    image: 'ghcr.io/linuxserver/webtop:debian-xfce',
     sizeLabel: '~1.2 GB',
     kind: 'image',
   },
@@ -336,10 +336,10 @@ const MODULES: ModuleDef[] = [
     id: 'os:kali',
     category: 'os',
     name: 'Kali Linux Security GUI',
-    description: 'Дистрибутив для аудита безопасности с графическим интерфейсом.',
+    description: 'Дистрибутив для аудита безопасности с графическим интерфейсом и noVNC.',
     icon: 'kali',
     group: 'Операционные системы',
-    image: 'lscr.io/linuxserver/webtop:kali-xfce',
+    image: 'kasmweb/kali-rolling-desktop:1.16.0',
     sizeLabel: '~2.2 GB',
     kind: 'image',
   },
@@ -350,7 +350,7 @@ const MODULES: ModuleDef[] = [
     description: 'Сверхлёгкий дистрибутив с минимальным потреблением RAM.',
     icon: 'alpine',
     group: 'Операционные системы',
-    image: 'lscr.io/linuxserver/webtop:alpine-xfce',
+    image: 'ghcr.io/linuxserver/webtop:alpine-kde',
     sizeLabel: '~800 MB',
     kind: 'image',
   },
@@ -1388,7 +1388,7 @@ fi
 
 step "7/10 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
-  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "lscr.io/linuxserver/webtop:debian-xfce" "lscr.io/linuxserver/webtop:kali-xfce" "lscr.io/linuxserver/webtop:alpine-xfce" "dockur/windows:xp" )
+  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
   for img in "\${IMAGES[@]}"; do
     if docker image inspect "$img" >/dev/null 2>&1; then
       ok "Образ уже загружен: $img"

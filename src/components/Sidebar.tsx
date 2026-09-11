@@ -8,6 +8,7 @@ import {
   Settings,
   Package,
   Boxes,
+  Rocket,
   X,
 } from 'lucide-react';
 import { FixcatLogo } from './icons/OSIcons';
@@ -80,6 +81,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       sublabel: 'Удаленный доступ к ОС',
       icon: Tv,
       badge: null,
+    },
+    {
+      id: 'autostart',
+      label: 'Автозагрузки',
+      sublabel: 'Автозапуск при старте хоста',
+      icon: Rocket,
+      badge: 'Boot',
+      badgeColor: 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20',
     },
     {
       id: 'on-device-ai',

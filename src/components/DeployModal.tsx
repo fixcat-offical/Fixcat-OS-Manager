@@ -33,6 +33,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
   const [ramMb, setRamMb] = useState('2048');
   const [cpuCores, setCpuCores] = useState('2');
   const [resolution, setResolution] = useState('1920x1080');
+  const [restartPolicy, setRestartPolicy] = useState('no');
 
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStep, setDeployStep] = useState<number>(0);
@@ -47,6 +48,8 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       renderIcon: () => <UbuntuIcon className="w-6 h-6" />,
       badge: 'Популярное',
       image: 'dorowu/ubuntu-desktop-lxde-vnc:latest',
+      webPort: 80,
+      vncPort: 5900,
       defaultPort: '6082',
       defaultRam: '2048',
       desc: 'Полноценный рабочий стол Ubuntu Linux с готовым веб-доступом noVNC.',
@@ -57,6 +60,8 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Классика',
       image: 'dockur/windows:xp',
+      webPort: 8006,
+      vncPort: 5900,
       defaultPort: '8007',
       defaultRam: '1024',
       desc: 'Легковесная виртуальная машина Windows XP с Luna темой в контейнере.',
@@ -66,7 +71,9 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       name: 'Debian 12 Bookworm XFCE',
       renderIcon: () => <DebianIcon className="w-6 h-6" />,
       badge: 'Стабильность',
-      image: 'lscr.io/linuxserver/webtop:debian-xfce',
+      image: 'ghcr.io/linuxserver/webtop:debian-xfce',
+      webPort: 3000,
+      vncPort: 5900,
       defaultPort: '3001',
       defaultRam: '2048',
       desc: 'Оригинальный дистрибутив Debian с легковесным графическим столом.',
@@ -76,7 +83,9 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       name: 'Kali Linux Security GUI',
       renderIcon: () => <KaliIcon className="w-6 h-6" />,
       badge: 'Безопасность',
-      image: 'lscr.io/linuxserver/webtop:kali-xfce',
+      image: 'kasmweb/kali-rolling-desktop:1.16.0',
+      webPort: 6901,
+      vncPort: 5901,
       defaultPort: '3002',
       defaultRam: '3072',
       desc: 'Дистрибутив для тестирования и безопасности с графическим интерфейсом.',
@@ -86,7 +95,9 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       name: 'Alpine Linux Light GUI',
       renderIcon: () => <AlpineIcon className="w-6 h-6" />,
       badge: 'Минимум RAM',
-      image: 'lscr.io/linuxserver/webtop:alpine-xfce',
+      image: 'ghcr.io/linuxserver/webtop:alpine-kde',
+      webPort: 3000,
+      vncPort: 5900,
       defaultPort: '3003',
       defaultRam: '512',
       desc: 'Сверхбыстрый дистрибутив с минимальным потреблением ресурсов.',
@@ -123,7 +134,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
   };
 
   const selectedTplObj = templates.find((t) => t.id === selectedTemplate) || templates[0];
-  const dockerCmd = `docker run -d --name ${containerName || 'os-desktop'} -p ${vncPort}:80 -p ${parseInt(vncPort, 10) + 100}:5900 -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${selectedTplObj.image}`;
+  const dockerCmd = `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${selectedTplObj.webPort} -p ${parseInt(vncPort, 10) + 100}:${selectedTplObj.vncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${selectedTplObj.image}`;
 
   const handleCopyCmd = () => {
     navigator.clipboard.writeText(dockerCmd);
@@ -148,6 +159,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
         ramMb,
         cpuCores,
         resolution,
+        restartPolicy,
       });
       setDeployStep(4);
     } catch (err: any) {
@@ -286,6 +298,21 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
                   <option value="1600x900">1600x900</option>
                   <option value="1280x720">1280x720 (HD)</option>
                   <option value="1024x768">1024x768 (Windows XP Classic)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">Автозапуск при старте хоста:</label>
+                <select
+                  value={restartPolicy}
+                  disabled={isDeploying}
+                  onChange={(e) => setRestartPolicy(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
+                >
+                  <option value="no">Нет (выкл.)</option>
+                  <option value="unless-stopped">Всегда (unless-stopped)</option>
+                  <option value="always">Всегда (always)</option>
+                  <option value="on-failure">При ошибке (on-failure)</option>
                 </select>
               </div>
             </div>

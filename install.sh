@@ -288,7 +288,7 @@ fi
 
 step "7/10 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
-  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "lscr.io/linuxserver/webtop:debian-xfce" "lscr.io/linuxserver/webtop:kali-xfce" "lscr.io/linuxserver/webtop:alpine-xfce" "dockur/windows:xp" )
+  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
   for img in "${IMAGES[@]}"; do
     if docker image inspect "$img" >/dev/null 2>&1; then
       ok "Образ уже загружен: $img"
