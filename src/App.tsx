@@ -281,6 +281,7 @@ export default function App() {
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
           onLogout={handleLogout}
           username={authStatus.username}
+          role={authStatus.role || null}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">

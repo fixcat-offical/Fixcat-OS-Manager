@@ -86,6 +86,9 @@ export const ResourceMonitorView: React.FC<ResourceMonitorViewProps> = ({
           <div className="text-[11px] text-slate-400 mt-1 font-mono">
             {systemInfo?.cpus.model || 'CPU'} ({systemInfo?.cpus.count || 1} ядер)
           </div>
+          <div className="text-[11px] text-slate-400 mt-1 font-mono">
+            Load avg: {systemInfo?.loadAvg?.map((x) => x.toFixed(2)).join(' / ') || '—'}
+          </div>
         </div>
 
         <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">

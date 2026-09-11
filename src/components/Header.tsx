@@ -24,6 +24,7 @@ interface HeaderProps {
   onToggleMobileMenu?: () => void;
   onLogout?: () => void;
   username?: string | null;
+  role?: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileMenu,
   onLogout,
   username,
+  role,
 }) => {
   const getTabTitle = (tab: string) => {
     switch (tab) {
@@ -196,9 +198,18 @@ export const Header: React.FC<HeaderProps> = ({
         {onLogout && (
           <button
             onClick={onLogout}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700/70 hover:border-rose-500/30 transition-colors cursor-pointer"
+            className="flex items-center space-x-1.5 p-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700/70 hover:border-rose-500/30 transition-colors cursor-pointer"
             title={`Выйти (${username || 'admin'})`}
           >
+            {username && (
+              <span className={`hidden md:inline text-[11px] font-medium px-2 py-0.5 rounded-lg ${
+                role === 'admin'
+                  ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                  : 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+              }`}>
+                {role === 'admin' ? 'Админ' : 'Пользователь'}
+              </span>
+            )}
             <LogOut className="w-4 h-4" />
           </button>
         )}

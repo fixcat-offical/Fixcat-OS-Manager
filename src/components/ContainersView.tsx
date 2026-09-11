@@ -14,6 +14,9 @@ import {
   CheckSquare,
   Square as SquareEmpty,
   RefreshCw,
+  Link2,
+  ArrowUpDown,
+  Check,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
 import { getOSIcon } from './icons/OSIcons';
@@ -29,6 +32,12 @@ interface ContainersViewProps {
   isRefreshing: boolean;
 }
 
+type SortMode = 'name' | 'status' | 'port' | 'cpu';
+
+const buildContainerUrl = (c: ContainerItem): string =>
+  c.osInfo?.vncUrl ||
+  `http://${window.location.hostname}:${c.osInfo?.noVncPort || 6080}/`;
+
 export const ContainersView: React.FC<ContainersViewProps> = ({
   containers,
   onOpenNoVnc,
@@ -42,24 +51,57 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'paused' | 'exited'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [inspectingContainer, setInspectingContainer] = useState<ContainerItem | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('name');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Filtered containers
-  const filteredContainers = containers.filter((c) => {
-    const matchesSearch =
-      (c.Names?.[0] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.Image || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.osInfo?.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.Id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      String(c.osInfo?.noVncPort || '').includes(searchTerm);
+  const filteredContainers = containers
+    .filter((c) => {
+      const matchesSearch =
+        (c.Names?.[0] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.Image || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.osInfo?.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.Id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(c.osInfo?.noVncPort || '').includes(searchTerm);
 
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'running' && c.State === 'running') ||
-      (statusFilter === 'paused' && c.State === 'paused') ||
-      (statusFilter === 'exited' && (c.State === 'exited' || c.State === 'dead'));
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'running' && c.State === 'running') ||
+        (statusFilter === 'paused' && c.State === 'paused') ||
+        (statusFilter === 'exited' && (c.State === 'exited' || c.State === 'dead'));
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortMode === 'name') cmp = (a.Names?.[0] || '').localeCompare(b.Names?.[0] || '');
+      else if (sortMode === 'status') cmp = (a.State || '').localeCompare(b.State || '');
+      else if (sortMode === 'port') cmp = (a.osInfo?.noVncPort || 0) - (b.osInfo?.noVncPort || 0);
+      else if (sortMode === 'cpu') cmp = (a.stats?.cpuPercent || 0) - (b.stats?.cpuPercent || 0);
+      return sortAsc ? cmp : -cmp;
+    });
+
+  const handleCopyLink = (c: ContainerItem) => {
+    const url = buildContainerUrl(c);
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopiedId(c.Id);
+        setTimeout(() => setCopiedId((prev) => (prev === c.Id ? null : prev)), 1600);
+      },
+      () => {
+        // clipboard fallback
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setCopiedId(c.Id);
+        setTimeout(() => setCopiedId((prev) => (prev === c.Id ? null : prev)), 1600);
+      },
+    );
+  };
 
   // Batch toggle
   const handleToggleSelect = (id: string) => {
@@ -194,6 +236,37 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
           >
             Стоп ({exitedCount})
           </button>
+        </div>
+
+        {/* Sort Dropdown */}
+        <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs overflow-x-auto">
+          <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 ml-1" />
+          {(
+            [
+              ['name', 'Имя'],
+              ['status', 'Статус'],
+              ['port', 'Порт'],
+              ['cpu', 'CPU'],
+            ] as [SortMode, string][]
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => {
+                if (sortMode === mode) setSortAsc(!sortAsc);
+                else {
+                  setSortMode(mode);
+                  setSortAsc(true);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                sortMode === mode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+              title={`Сортировка: ${label}${sortMode === mode ? (sortAsc ? ' ↑' : ' ↓') : ''}`}
+            >
+              {label}
+              {sortMode === mode && (sortAsc ? ' ↑' : ' ↓')}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -588,13 +661,30 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                         </button>
 
                         {container.osInfo?.noVncPort && (
-                          <button
-                            onClick={() => onOpenNoVnc(container)}
-                            title="Открыть noVNC"
-                            className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-600/20 transition-colors cursor-pointer"
-                          >
-                            <Tv className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => onOpenNoVnc(container)}
+                              title="Открыть noVNC"
+                              className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-600/20 transition-colors cursor-pointer"
+                            >
+                              <Tv className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleCopyLink(container)}
+                              title="Копировать ссылку noVNC"
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                copiedId === container.Id
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              {copiedId === container.Id ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Link2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </>
                         )}
 
                         <button
