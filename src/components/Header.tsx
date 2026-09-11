@@ -9,6 +9,7 @@ import {
   Menu,
   LogOut,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 import { SystemInfo } from '../types';
 
@@ -25,6 +26,7 @@ interface HeaderProps {
   onLogout?: () => void;
   username?: string | null;
   role?: string | null;
+  lastUpdated?: Date | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   username,
   role,
+  lastUpdated,
 }) => {
   const getTabTitle = (tab: string) => {
     switch (tab) {
@@ -183,6 +186,17 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
         </button>
+
+        {/* Last Updated Indicator */}
+        {lastUpdated && (
+          <div
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/50 text-[11px] text-slate-400 font-mono"
+            title="Обновлено"
+          >
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
+        )}
 
         {/* Action Button: Deploy OS */}
         <button

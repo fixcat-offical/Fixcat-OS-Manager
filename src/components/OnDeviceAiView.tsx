@@ -18,6 +18,7 @@ import {
   Plus,
   Zap,
   HardDrive,
+  Search,
   Sparkles,
 } from 'lucide-react';
 import { OnDeviceAiModel } from '../types';
@@ -53,6 +54,8 @@ export const OnDeviceAiView: React.FC<OnDeviceAiViewProps> = ({ hostIp }) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [loadingModelId, setLoadingModelId] = useState<string | null>(null);
   const [copiedEndpoint, setCopiedEndpoint] = useState<boolean>(false);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelFilter, setModelFilter] = useState<'all' | 'downloaded' | 'running'>('all');
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; time: string; modelName?: string }>>([
@@ -266,6 +269,21 @@ export const OnDeviceAiView: React.FC<OnDeviceAiViewProps> = ({ hostIp }) => {
     setTimeout(() => setCopiedEndpoint(false), 2000);
   };
 
+  const visibleModels = models.filter((m) => {
+    const q = modelSearch.toLowerCase();
+    const matchesSearch =
+      !q ||
+      m.name.toLowerCase().includes(q) ||
+      (m.description || '').toLowerCase().includes(q) ||
+      (m.provider || '').toLowerCase().includes(q) ||
+      m.id.toLowerCase().includes(q);
+    const matchesFilter =
+      modelFilter === 'all' ||
+      (modelFilter === 'downloaded' && m.isDownloaded) ||
+      (modelFilter === 'running' && m.isRunning);
+    return matchesSearch && matchesFilter;
+  });
+
   return (
     <div className="space-y-6 pb-12">
       {/* PROMINENT ACTIVE MODEL VRAM BANNER */}
@@ -439,7 +457,7 @@ export const OnDeviceAiView: React.FC<OnDeviceAiViewProps> = ({ hostIp }) => {
           </div>
 
           {/* Model Cards Grid */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
               Все доступные модели
             </h2>
@@ -452,8 +470,34 @@ export const OnDeviceAiView: React.FC<OnDeviceAiViewProps> = ({ hostIp }) => {
             </button>
           </div>
 
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Поиск модели по имени, описанию или провайдеру..."
+                className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:border-blue-500 focus:outline-none placeholder:text-slate-500"
+              />
+            </div>
+            <div className="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs overflow-x-auto">
+              {['all', 'downloaded', 'running'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setModelFilter(f as 'all' | 'downloaded' | 'running')}
+                  className={`px-2.5 py-1.5 rounded-lg font-medium whitespace-nowrap cursor-pointer transition-colors ${
+                    modelFilter === f ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {f === 'all' ? 'Все' : f === 'downloaded' ? 'Скачанные' : 'Активные'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {models.map((m) => {
+            {visibleModels.map((m) => {
               const isDownloadingThis = downloadingId === m.id;
               const isLoadingThis = loadingModelId === m.id;
 
@@ -554,6 +598,14 @@ export const OnDeviceAiView: React.FC<OnDeviceAiViewProps> = ({ hostIp }) => {
               );
             })}
           </div>
+
+          {visibleModels.length === 0 && (
+            <div className="p-10 text-center text-slate-500 flex flex-col items-center gap-2">
+              <Search className="w-6 h-6 text-slate-600" />
+              <p className="font-medium">Модели не найдены</p>
+              <p className="text-xs">Измените запрос или снимите фильтры</p>
+            </div>
+          )}
         </div>
       )}
 

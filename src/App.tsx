@@ -26,6 +26,7 @@ export default function App() {
   const [refreshInterval, setRefreshInterval] = useState<number>(2000);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Auth State
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
@@ -160,6 +161,7 @@ export default function App() {
       console.error('Failed to fetch data:', err);
     } finally {
       setIsRefreshing(false);
+      setLastUpdated(new Date());
     }
   }, [authStatus.isAuthenticated]);
 
@@ -282,6 +284,7 @@ export default function App() {
           onLogout={handleLogout}
           username={authStatus.username}
           role={authStatus.role || null}
+          lastUpdated={lastUpdated}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">

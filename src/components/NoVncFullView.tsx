@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Tv,
   ExternalLink,
@@ -31,6 +31,14 @@ export const NoVncFullView: React.FC<NoVncFullViewProps> = ({
   const [isSplitMode, setIsSplitMode] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'interactive' | 'iframe'>('interactive');
   const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // Keep selection in sync when the container list changes (new container appears / old one is removed)
+  useEffect(() => {
+    setActiveId((prev) => {
+      if (prev && osContainers.some((c) => c.Id === prev)) return prev;
+      return osContainers[0]?.Id || '';
+    });
+  }, [containers, osContainers]);
 
   const selectedContainer = osContainers.find((c) => c.Id === activeId) || osContainers[0];
 
