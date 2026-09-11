@@ -1326,7 +1326,10 @@ else
 fi
 
 step "4/9 — Node.js LTS"
-NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v//;s/\\..*//')
+NODE_MAJOR=""
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v//;s/\\..*//')
+fi
 if [[ -n "$NODE_MAJOR" && "$NODE_MAJOR" -ge 18 ]]; then
   ok "Node.js v$NODE_MAJOR уже установлен."
 elif [[ "$INSTALL_NODE" == "0" ]]; then
@@ -1343,7 +1346,7 @@ else
       exec_cmd pacman -Sy --noconfirm nodejs npm ;;
     *) warn "Нет автоматической установки Node для $OS_ID — установите Node.js 18+ вручную." ;;
   esac
-  ok "Node.js v$(node --version | sed 's/v//') установлен."
+  ok "Node.js v$(node --version 2>/dev/null | sed 's/v//' || echo '?') установлен."
 fi
 
 step "5/9 — NVIDIA Container Toolkit (GPU)"
@@ -1445,7 +1448,7 @@ else
 fi
 
 step "9/9 — Готово"
-LOCAL_IPS=($(hostname -I 2>/dev/null))
+LOCAL_IPS=($(hostname -I 2>/dev/null || true))
 PUBLIC_IP=""
 PUBLIC_IP=$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || curl -fsS --max-time 4 https://ifconfig.me 2>/dev/null || echo "")
 echo
