@@ -7,17 +7,21 @@ import net from 'net';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import { registerInstallerRoutes, getInstallerScript } from './installer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+
+// Port is configurable: env PORT (set by installer's systemd unit / .env override)
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
 // Ensure local data directory for Auth database
-const dataDir = path.join(__dirname, 'data');
+// Overridable via FIXCAT_DATA_DIR so the installer can point to /opt/fixcat-os-manager/data
+const dataDir = process.env.FIXCAT_DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -481,33 +485,13 @@ app.get('/api/installer/export-kit', async (req, res) => {
 });
 
 app.get('/api/installer/script', (req, res) => {
-  const scriptText = `#!/usr/bin/env bash
-# Fixcat OS Manager - One-Click Installer
-set -e
-echo "=== Installing Fixcat OS Manager ==="
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root (sudo)."
-  exit 1
-fi
-apt-get update -y && apt-get install -y curl git build-essential ca-certificates
-if ! command -v docker &> /dev/null; then
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable --now docker
-fi
-if ! command -v node &> /dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
-fi
-mkdir -p /opt/fixcat-os-manager/data
-cd /opt/fixcat-os-manager
-echo "Fixcat OS Manager is ready! Launching service on port 3000..."
-`;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.send(scriptText);
+  res.setHeader('Content-Disposition', `attachment; filename="fixcat-install.sh"`);
+  res.send(getInstallerScript());
 });
 
 // ---  &  REAL INTEGRATION ENDPOINTS ---
-const LOCAL_MODELS_FILE = path.join(process.cwd(), 'data', 'local_models.json');
+const LOCAL_MODELS_FILE = path.join(dataDir, 'local_models.json');
 
 interface SavedLocalModel {
   id: string;
@@ -684,13 +668,13 @@ app.get('/api/on-device-ai/status', async (req, res) => {
   }
 
   res.json({
-    isRunning: true, // Marked active as  Service is online
+    isRunning,
     port: isRunning ? (activeProvider === 'lmstudio' ? 1234 : 11434) : 1234,
-    activeProvider: isRunning ? activeProvider : 'lmstudio-local',
+    activeProvider: isRunning ? activeProvider : 'offline',
     lmsCliInstalled,
-    loadedModels: loadedModels.length > 0 ? loadedModels : [activeSavedModel?.id || 'Meta-Llama-3.2-3B'],
-    activeLoadedModelId: activeSavedModel?.id || 'lmstudio-community/Meta-Llama-3.2-3B-Instruct-GGUF',
-    activeLoadedModelName: activeSavedModel?.name || 'Meta Llama 3.2 3B Instruct',
+    loadedModels: loadedModels.length > 0 ? loadedModels : (activeSavedModel ? [activeSavedModel.id] : []),
+    activeLoadedModelId: activeSavedModel?.id || null,
+    activeLoadedModelName: activeSavedModel?.name || null,
     hostEndpoint: `http://${appConfig.hostIp || 'localhost'}:1234/v1`,
   });
 });
@@ -1110,6 +1094,21 @@ app.get('/api/containers/:id/logs', async (req, res) => {
   res.status(404).json({ logs: 'Логи контейнера недоступны.' });
 });
 
+// 5b. Container Inspect (full Docker metadata)
+app.get('/api/containers/:id/inspect', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { statusCode, data } = await queryDockerSocket(`/containers/${id}/json`);
+    if (statusCode === 200) {
+      return res.json({ inspect: data });
+    }
+    return res.status(statusCode).json({ error: data?.message || 'Контейнер не найден' });
+  } catch (err: any) {
+    return res.status(400).json({ error: `Не удалось получить данные контейнера: ${err.message}` });
+  }
+});
+
 // 6. Historical telemetry metrics
 app.get('/api/stats/history', (req, res) => {
   res.json({
@@ -1213,12 +1212,23 @@ app.post('/api/containers/create', async (req, res) => {
   });
 });
 
+// --- INSTALLER & MODULES ROUTES (-style installer engine) ---
+registerInstallerRoutes(app);
+
 // Start Express + Vite
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    // dist/ is written next to dist/server.js, so resolve it relative to __dirname
+    const distDir =
+      fs.existsSync(path.join(__dirname, 'dist', 'index.html'))
+        ? path.join(__dirname, 'dist')
+        : fs.existsSync(path.join(__dirname, 'index.html'))
+        ? __dirname
+        : path.join(__dirname, 'dist');
+
+    app.use(express.static(distDir));
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
     const { createServer: createViteServer } = await import('vite');

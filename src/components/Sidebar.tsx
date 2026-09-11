@@ -7,6 +7,7 @@ import {
   Bot,
   Settings,
   Package,
+  Boxes,
   X,
 } from 'lucide-react';
 import { FixcatLogo } from './icons/OSIcons';
@@ -89,9 +90,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-blue-500/10 text-blue-300 border border-blue-500/20',
     },
     {
+      id: 'modules',
+      label: 'Модули',
+      sublabel: 'Каталог ОС, AI и системы',
+      icon: Boxes,
+      badge: 'Store',
+      badgeColor: 'bg-violet-500/10 text-violet-300 border border-violet-500/20',
+    },
+    {
       id: 'installer',
       label: 'Установщик & Экспорт',
-      sublabel: 'ТЗ и скрипты для ИИ',
+      sublabel: '-style установка и скрипты',
       icon: Package,
       badge: 'Kit',
       badgeColor: 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20',

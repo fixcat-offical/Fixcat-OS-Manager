@@ -11,6 +11,7 @@ import { DeployModal } from './components/DeployModal';
 import { SettingsView } from './components/SettingsView';
 import { OnDeviceAiView } from './components/OnDeviceAiView';
 import { InstallerExportView } from './components/InstallerExportView';
+import { ModulesView } from './components/ModulesView';
 import { AuthView } from './components/AuthView';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
@@ -322,6 +323,10 @@ export default function App() {
 
           {currentTab === 'on-device-ai' && (
             <OnDeviceAiView hostIp={systemInfo?.config?.hostIp || 'localhost'} />
+          )}
+
+          {currentTab === 'modules' && (
+            <ModulesView />
           )}
 
           {currentTab === 'installer' && (

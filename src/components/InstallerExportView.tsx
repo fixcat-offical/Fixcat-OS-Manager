@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Package,
   Download,
@@ -6,17 +6,59 @@ import {
   Check,
   Terminal,
   ShieldCheck,
-  Cpu,
   Server,
   Code2,
   FileText,
   Zap,
-  HardDrive,
   RefreshCw,
-  ExternalLink,
   Layers,
   Sparkles,
+  Play,
+  Square,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Minus,
+  HardDrive,
+  AlertTriangle,
+  Boxes,
+  Globe,
+  Settings,
+  ListChecks,
+  Plus,
 } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Types (mirror /api/installer/status)
+// ---------------------------------------------------------------------------
+
+type StepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'warn' | 'error';
+type LogLevel = 'info' | 'succ' | 'warn' | 'err' | 'cmd' | 'out';
+
+interface InstallerStep {
+  id: string;
+  title: string;
+  status: StepStatus;
+  detail?: string;
+}
+
+interface InstallerLog {
+  t: string;
+  level: LogLevel;
+  msg: string;
+}
+
+interface InstallerStatus {
+  status: 'idle' | 'running' | 'done' | 'stopped';
+  currentStep: number;
+  totalSteps: number;
+  steps: InstallerStep[];
+  logs: InstallerLog[];
+  startedAt: string | null;
+  finishedAt: string | null;
+  config: any;
+  error: string | null;
+}
 
 interface DiagnosticResult {
   os: string;
@@ -35,13 +77,167 @@ interface DiagnosticResult {
   readyForInstallation: boolean;
 }
 
+const IDLE_STATUS: InstallerStatus = {
+  status: 'idle',
+  currentStep: 0,
+  totalSteps: 0,
+  steps: [],
+  logs: [],
+  startedAt: null,
+  finishedAt: null,
+  config: null,
+  error: null,
+};
+
+const IMAGE_MODULES = [
+  { id: 'os:ubuntu', label: 'Ubuntu 22.04', image: 'dorowu/ubuntu-desktop-lxde-vnc' },
+  { id: 'os:debian', label: 'Debian 12 XFCE', image: 'webtop:debian-xfce' },
+  { id: 'os:kali', label: 'Kali Linux GUI', image: 'webtop:kali-xfce' },
+  { id: 'os:alpine', label: 'Alpine Light', image: 'webtop:alpine-xfce' },
+  { id: 'os:windows-xp', label: 'Windows XP', image: 'dockur/windows:xp' },
+];
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+const StepIcon: React.FC<{ status: StepStatus }> = ({ status }) => {
+  switch (status) {
+    case 'running':
+      return <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />;
+    case 'done':
+      return <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
+    case 'error':
+      return <XCircle className="w-4 h-4 text-rose-400 shrink-0" />;
+    case 'warn':
+      return <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />;
+    case 'skipped':
+      return <Minus className="w-4 h-4 text-slate-500 shrink-0" />;
+    default:
+      return <span className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />;
+  }
+};
+
+const logColor = (level: LogLevel): string => {
+  switch (level) {
+    case 'succ': return 'text-emerald-400';
+    case 'err': return 'text-rose-400';
+    case 'warn': return 'text-amber-300';
+    case 'cmd': return 'text-blue-300 font-semibold';
+    case 'info': return 'text-slate-200';
+    default: return 'text-slate-400';
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Main view
+// ---------------------------------------------------------------------------
+
 export const InstallerExportView: React.FC = () => {
-  const [activeFileTab, setActiveFileTab] = useState<'install.sh' | 'docker-compose.yml' | 'Dockerfile' | 'fixcat.service' | 'install.ps1' | 'manifest.json'>('install.sh');
+  // Installer live state
+  const [installer, setInstaller] = useState<InstallerStatus>(IDLE_STATUS);
+  const [connected, setConnected] = useState(false);
+
+  // Config form
+  const [port, setPort] = useState<string>(String(window.location.port || '3000'));
+  const [installDir, setInstallDir] = useState('/opt/fixcat-os-manager');
+  const [dataDir, setDataDir] = useState('/opt/fixcat-os-manager/data');
+  const [installDocker, setInstallDocker] = useState(true);
+  const [installNode, setInstallNode] = useState(true);
+  const [installNvidia, setInstallNvidia] = useState(true);
+  const [installLms, setInstallLms] = useState(true);
+  const [preloadModules, setPreloadModules] = useState<Set<string>>(
+    () => new Set(IMAGE_MODULES.map((m) => m.id))
+  );
+  const [dryRun, setDryRun] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [scanPort, setScanPort] = useState(false);
+
+  // Export kit
+  const [activeFileTab, setActiveFileTab] = useState('install.sh');
   const [copied, setCopied] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult | null>(null);
-  const [loadingDiagnostics, setLoadingDiagnostics] = useState<boolean>(false);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
+
+  const termRef = useRef<HTMLDivElement>(null);
 
   const hostIp = window.location.hostname || 'localhost';
+  const oneLinerCommand = `curl -fsSL http://${hostIp}${window.location.port ? ':' + window.location.port : ''}/api/installer/script | sudo bash`;
+
+  // -------------------------------------------------------------------------
+  // SSE live stream
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const es = new EventSource('/api/installer/stream');
+    es.onopen = () => setConnected(true);
+    es.onerror = () => setConnected(false);
+
+    es.onmessage = (event) => {
+      try {
+        const ev = JSON.parse(event.data);
+        if (ev.type !== 'installer') return;
+        const p = ev.payload || {};
+        if (p.type === 'snapshot') {
+          setInstaller((prev) => ({
+            ...prev,
+            status: p.status,
+            currentStep: p.currentStep,
+            totalSteps: p.totalSteps,
+            steps: p.steps || [],
+            logs: p.logs || [],
+            startedAt: p.startedAt,
+            finishedAt: p.finishedAt,
+            config: p.config,
+          }));
+        } else if (p.type === 'log') {
+          setInstaller((prev) => ({
+            ...prev,
+            logs: [...prev.logs, { t: p.t, level: p.level, msg: p.msg }].slice(-400),
+          }));
+        } else if (p.type === 'step') {
+          setInstaller((prev) => ({
+            ...prev,
+            steps: prev.steps.map((s) =>
+              s.id === p.id ? { ...s, status: p.status, detail: p.detail } : s
+            ),
+          }));
+        } else if (p.type === 'status') {
+          setInstaller((prev) => ({
+            ...prev,
+            status: p.status,
+            currentStep: p.currentStep,
+            totalSteps: p.totalSteps,
+          }));
+        } else if (p.type === 'start') {
+          setInstaller((prev) => ({
+            ...prev,
+            status: 'running',
+            currentStep: 0,
+            startedAt: new Date().toISOString(),
+          }));
+        } else if (p.type === 'final') {
+          setInstaller((prev) => ({ ...prev, status: p.status }));
+        }
+      } catch {
+        // bad json, ignore
+      }
+    };
+
+    return () => es.close();
+  }, []);
+
+  // Auto-scroll terminal
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.scrollTop = termRef.current.scrollHeight;
+    }
+  }, [installer.logs]);
+
+  const running = installer.status === 'running';
+
+  // -------------------------------------------------------------------------
+  // Actions
+  // -------------------------------------------------------------------------
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -53,12 +249,9 @@ export const InstallerExportView: React.FC = () => {
     setLoadingDiagnostics(true);
     try {
       const res = await fetch('/api/installer/check-requirements');
-      if (res.ok) {
-        const data = await res.json();
-        setDiagnostics(data);
-      }
+      if (res.ok) setDiagnostics(await res.json());
     } catch {
-      // Diagnostic error
+      // ignore
     } finally {
       setLoadingDiagnostics(false);
     }
@@ -68,115 +261,74 @@ export const InstallerExportView: React.FC = () => {
     runDiagnostics();
   }, []);
 
-  // Installation Files content
-  const installShContent = `#!/usr/bin/env bgash
+  const scanFreePort = async () => {
+    setScanPort(true);
+    try {
+      const res = await fetch(`/api/ports/next?desired=${parseInt(port, 10) || 3000}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.freePort) setPort(String(data.freePort));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setScanPort(false);
+    }
+  };
+
+  const toggleModule = (id: string) => {
+    setPreloadModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const startInstall = async () => {
+    setStarting(true);
+    try {
+      const res = await fetch('/api/installer/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          port: parseInt(port, 10) || 3000,
+          installDir,
+          dataDir,
+          installDocker,
+          installNode,
+          installNvidia,
+          installLms,
+          preloadModules: Array.from(preloadModules),
+          dryRun,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Не удалось запустить установку');
+      }
+    } catch {
+      alert('Ошибка сетевого запроса');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const stopInstall = async () => {
+    await fetch('/api/installer/stop', { method: 'POST' }).catch(() => {});
+  };
+
+  // Export kit file contents
+  const installShContent = `#!/usr/bin/env bash
 # ==============================================================================
-# Fixcat OS Manager - Automated System Installer & Daemon Setup
-# Target Platform: Ubuntu 20.04+, Debian 11+, RHEL/CentOS 9+, Arch Linux
+# Fixcat OS Manager — -style установщик
+# Этот файл скачивается командой: curl -fsSL <host>/api/installer/script
+# Интерактивный режим, автовыбор порта, установка Docker/Node/NVIDIA/,
+# предзагрузка модулей (образов ОС), сборка панели и systemd-служба.
+#
+# Запуск:  sudo bash fixcat-install.sh
+# Параметры: --port 8080 | --dir /opt/fixcat | --yes | --dry-run
 # ==============================================================================
-
-set -e
-
-echo "=== [Fixcat OS Manager] Запуск автоматической установки системы ==="
-
-# 1. Проверка прав root
-if [ "$EUID" -ne 0 ]; then
-  echo "❌ Ошибка: Скрипт установки должен быть запущен с правами root (sudo)."
-  exit 1
-fi
-
-# 2. Обновление пакетов и установка зависимостей
-echo "📦 [1/6] Обновление системных пакетов и установка curl, git, build-essential..."
-apt-get update -y && apt-get install -y curl git build-essential ca-certificates gnupg lsb-release
-
-# 3. Установка Docker и Docker Compose (если отсутствуют)
-if ! command -v docker &> /dev/null; then
-  echo "🐳 [2/6] Установка Docker Engine..."
-  curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh
-  systemctl enable --now docker
-else
-  echo "✅ Docker уже установлен на хосте."
-fi
-
-# 4. Проверка и установка NVIDIA Container Toolkit (для GPU acceleration / )
-if command -v nvidia-smi &> /dev/null; then
-  echo "🚀 [3/6] Обнаружен NVIDIA GPU! Настройка NVIDIA Container Toolkit..."
-  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg || true
-  curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \\
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \\
-    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-  apt-get update -y && apt-get install -y nvidia-container-toolkit || true
-  nvidia-ctk runtime configure --runtime=docker || true
-  systemctl restart docker
-fi
-
-# 5. Установка Node.js LTS (v20+)
-if ! command -v node &> /dev/null; then
-  echo "🟢 [4/6] Установка Node.js v20 LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
-fi
-
-# 6. Развертывание приложения Fixcat OS Manager
-INSTALL_DIR="/opt/fixcat-os-manager"
-echo "📁 [5/6] Подготовка директории \${INSTALL_DIR}..."
-mkdir -p \${INSTALL_DIR}/data
-
-cat << 'EOF' > \${INSTALL_DIR}/docker-compose.yml
-version: '3.8'
-services:
-  fixcat-manager:
-    image: fixcat/os-manager:latest
-    container_name: fixcat-os-manager
-    restart: always
-    ports:
-      - "3000:3000"
-      - "1234:1234"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/app/data
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-EOF
-
-# 7. Создание системной службы systemd
-echo "⚙️ [6/6] Создание системного демона systemd (/etc/systemd/system/fixcat.service)..."
-cat << EOF > /etc/systemd/system/fixcat.service
-[Unit]
-Description=Fixcat OS Manager - Container &  Control Panel
-After=network.target docker.service
-Requires=docker.service
-
-[Service]
-Type=simple
-WorkingDirectory=\${INSTALL_DIR}
-ExecStart=/usr/bin/docker compose up
-ExecStop=/usr/bin/docker compose down
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable fixcat.service
-
-echo ""
-echo "=========================================================================="
-echo "🎉 Установка Fixcat OS Manager успешно завершена!"
-echo "🌐 Панель доступна по адресу: http://$(hostname -I | awk '{print $1}'):3000"
-echo "🤖  OpenAI Proxy: http://$(hostname -I | awk '{print $1}'):1234/v1"
-echo "=========================================================================="
 `;
 
   const dockerComposeContent = `version: '3.8'
@@ -189,15 +341,14 @@ services:
     container_name: fixcat-os-manager
     restart: unless-stopped
     ports:
-      - "3000:3000"  # Web Control Panel & noVNC
-      - "1234:1234"  #  OpenAI-Compatible API Proxy
+      - "3000:3000"       # Веб-панель и noVNC
+      - "1234:1234"       #  OpenAI-совместимый API
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock  # Direct Docker Host Management
-      - ./data:/app/data                            # Persistent User Database
+      - /var/run/docker.sock:/var/run/docker.sock   # Управление Docker хоста
+      - ./data:/app/data                             # База данных / конфигурация
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DOCKER_SOCKET=/var/run/docker.sock
     deploy:
       resources:
         reservations:
@@ -207,35 +358,29 @@ services:
               capabilities: [gpu, compute, utility]
 `;
 
-  const dockerfileContent = `FROM node:20-alpine AS builder
+  const dockerfileContent = `FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-COPY package*.json ./
-RUN npm ci
+COPY package.json bun.lock* package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-# Copy source files and build production bundle
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Production environment
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install runtime utilities (curl, procps)
-RUN apk add --no-舆-cache curl procps
+RUN apk add --no-cache curl procps
 
-# Copy built artifacts from builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
-# Ensure data directory exists for persistent sqlite/json auth
 RUN mkdir -p /app/data
 
 EXPOSE 3000 1234
@@ -245,7 +390,7 @@ CMD ["node", "dist/server.js"]
 
   const serviceContent = `[Unit]
 Description=Fixcat OS Manager Service
-Documentation=https://github.com/fixcat/os-manager
+Documentation=https://github.com/fixcat-offical/Fixcat-OS-Manager
 After=network.target docker.service
 Requires=docker.service
 
@@ -253,87 +398,80 @@ Requires=docker.service
 Type=simple
 User=root
 WorkingDirectory=/opt/fixcat-os-manager
+Environment=PORT=3000
+Environment=NODE_ENV=production
 ExecStart=/usr/bin/node /opt/fixcat-os-manager/dist/server.js
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
-RestartSec=3s
+RestartSec=3
 LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
 `;
 
-  const ps1Content = `# Fixcat OS Manager - Windows PowerShell Automated Setup Script
-# Requires: PowerShell 5.1+, Windows 10/11 or Server 2022 with Docker Desktop & WSL2
+  const ps1Content = `# Fixcat OS Manager - PowerShell подготовка (Windows + Docker Desktop + WSL2)
+# Требуется: PowerShell 5.1+, Windows 10/11
 
-Write-Host "=== Fixcat OS Manager - Подготовка к запуск на Windows ===" -ForegroundColor Cyan
+Write-Host "=== Fixcat OS Manager - Windows Setup ===" -ForegroundColor Cyan
 
-# 1. Проверка прав администратора
 $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $IsAdmin) {
-    Write-Host "❌ Ошибка: Запустите PowerShell от имени Администратора!" -ForegroundColor Red
+    Write-Host "Запустите PowerShell от имени Администратора!" -ForegroundColor Red
     exit 1
 }
 
-# 2. Проверка Docker Desktop
 if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
-    Write-Host "⚠️ Docker Engine не найден. Установите Docker Desktop с поддержкой WSL2." -ForegroundColor Yellow
+    Write-Host "Docker Engine не найден. Установите Docker Desktop с WSL2." -ForegroundColor Yellow
 } else {
-    Write-Host "✅ Docker Engine найден." -ForegroundColor Green
+    Write-Host "Docker Engine найден." -ForegroundColor Green
 }
 
-# 3. Клонирование и сборка
 $TargetDir = "C:\\FixcatOSManager"
-if (-not (Test-Path $TargetDir)) {
-    New-Item -ItemType Directory -Path $TargetDir | Out-Null
-}
-
-Set-Location $TargetDir
-Write-Host "📦 Создание локальных папок базы данных и конфигурации..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path "$TargetDir\\data" -Force | Out-Null
 
-Write-Host "🚀 Запуск через Docker Desktop..." -ForegroundColor Cyan
 docker run -d --name fixcat-os-manager -p 3000:3000 -p 1234:1234 -v //var/run/docker.sock:/var/run/docker.sock -v "$TargetDir/data:/app/data" fixcat/os-manager:latest
 
-Write-Host "🎉 Готово! Панель открывается по адресу http://localhost:3000" -ForegroundColor Green
+Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor Green
 `;
 
   const manifestContent = `{
   "app": {
     "id": "fixcat-os-manager",
     "name": "Fixcat OS Manager",
-    "version": "2.5.0",
-    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами и локальными нейросетями ( /  Proxy)",
+    "version": "2.6.0",
+    "description": "Панель управления операционными системами Docker, noVNC веб-рабочими столами, локальными нейросетями ( /  Proxy) и встроенным -style установщиком",
     "license": "MIT",
     "author": "Fixcat Dev Team"
   },
   "runtime": {
-    "platform": "Node.js 20 LTS",
+    "platform": "Node.js 20+ LTS",
     "framework": "Express + Vite (TypeScript)",
     "entryPoint": "server.ts",
     "builtServer": "dist/server.js",
     "defaultPort": 3000,
-    "ProxyPort": 1234
+    "configPort": "создаётся установщиком (systemd-юнит / .env PORT)"
+  },
+  "installer": {
+    "endpoint": "/api/installer/script",
+    "stream": "/api/installer/stream (SSE)",
+    "status": "/api/installer/status",
+    "modules": "/api/modules",
+    "mode": "-style: интерактивный выбор порта/директории, установка Docker/Node/NVIDIA/, предзагрузка ОС-модулей, systemd"
   },
   "dependencies": {
-    "system": ["Docker Engine 24+", "NVIDIA Container Toolkit (Optional for GPU)", "Node.js 20+"],
+    "system": ["Docker Engine 24+", "NVIDIA Container Toolkit (Optional for GPU)", "Node.js 18+"],
     "ports": [
       { "port": 3000, "protocol": "TCP", "description": "Web GUI Control Panel & noVNC proxy" },
-      { "port": 1234, "protocol": "TCP", "description": "OpenAI-Compatible  Proxy API" },
-      { "port": 6082, "protocol": "TCP", "description": "Auto-allocated noVNC container desktop port" }
-    ],
-    "volumes": [
-      { "host": "/var/run/docker.sock", "container": "/var/run/docker.sock", "mode": "rw" },
-      { "host": "./data", "container": "/app/data", "mode": "rw" }
+      { "port": 1234, "protocol": "TCP", "description": "OpenAI-Compatible  Proxy API" }
     ]
   },
   "components": [
+    { "name": "InstallerEngine", "description": "-style пошаговый установщик с streaming-логами (SSE)" },
+    { "name": "ModulesStore", "description": "Каталог модулей: ОС-образы,  CLI, системные компоненты" },
     { "name": "DashboardView", "description": "Дашборд хоста: CPU, RAM, Multi-GPU, списки ОС" },
     { "name": "ContainersView", "description": "Управление контейнерами Docker, порты, логи, старт/стоп" },
-    { "name": "ResourceMonitorView", "description": "Мониторинг NVIDIA CUDA GPU (0 & 1), VRAM, температура, питание" },
-    { "name": "NoVncFullView", "description": "Встроенный полноэкранный клиенты noVNC веб-рабочих столов" },
-    { "name": "OnDeviceAiView", "description": "Менеджер локальных нейросетей , вызов API, скачивание моделей" },
-    { "name": "SettingsView", "description": "Настройки сокета Docker, TCP Host, конфигурация сети" }
+    { "name": "OnDeviceAiView", "description": "Менеджер локальных нейросетей , вызов API, модели" }
   ],
   "supportedOS": [
     "Ubuntu Desktop (dorowu/ubuntu-desktop-lxde-vnc)",
@@ -358,11 +496,39 @@ Write-Host "🎉 Готово! Панель открывается по адре
 
   const currentScriptContent = getFileContent();
 
-  const oneLinerCommand = `curl -fsSL http://${hostIp}:3000/api/installer/script | sudo bash`;
+  const fileTabs = [
+    { id: 'install.sh', label: 'install.sh (Linux)', icon: Terminal },
+    { id: 'docker-compose.yml', label: 'docker-compose.yml', icon: Layers },
+    { id: 'Dockerfile', label: 'Dockerfile', icon: Server },
+    { id: 'fixcat.service', label: 'fixcat.service', icon: Zap },
+    { id: 'install.ps1', label: 'install.ps1 (Win)', icon: FileText },
+    { id: 'manifest.json', label: 'manifest.json', icon: Code2 },
+  ];
+
+  const progressPercent =
+    installer.totalSteps > 0
+      ? Math.round((installer.currentStep / installer.totalSteps) * 100)
+      : 0;
+
+  const toggle = (label: string, value: boolean, set: (v: boolean) => void, disabled: boolean) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => set(!value)}
+      className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${
+        value
+          ? 'bg-blue-600/20 border-blue-500/40 text-blue-200'
+          : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${value ? 'bg-blue-400' : 'bg-slate-600'}`} />
+      {label}
+    </button>
+  );
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Banner */}
+      {/* ================= LIVE INSTALLER ================= */}
       <div className="p-6 rounded-2xl bg-gradient-to-r from-blue-950/80 via-slate-900 to-indigo-950/80 border border-blue-500/30 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
           <Package className="w-48 h-48 text-blue-400" />
@@ -370,49 +536,268 @@ Write-Host "🎉 Готово! Панель открывается по адре
 
         <div className="relative z-10 space-y-3 max-w-3xl">
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span>Подготовка к сборке установщика в другом ИИ</span>
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>-style установщик</span>
+            <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+              {connected ? 'SSE connected' : 'SSE offline'}
+            </span>
           </div>
 
           <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-            Комплект автономного установщика и сборки (Installer &amp; Export Kit)
+            Установщик Fixcat OS Manager
           </h1>
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Здесь собраны все необходимые модули, манифесты и автоскрипты для того, чтобы в другом ИИ (ChatGPT, Claude, Cursor) или сборщике (Inno Setup, Electron, PyInstaller) сделать полноценный установщик <b>Fixcat OS Manager</b> со всеми компонентами.
+            Пошаговая установка как в : свой порт, своя директория, установка
+            Docker / Node.js / NVIDIA Toolkit /  CLI, предзагрузка ОС-модулей,
+            продакшн-сборка панели и автозапуск systemd. Все шаги выполняются на этом
+            сервере с живым логом прямо в браузере.
           </p>
-
-          <div className="pt-2 flex flex-wrap gap-3">
-            <a
-              href="/api/installer/export-kit"
-              download="fixcat-installer-kit.json"
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>Скачать полный манифест (JSON)</span>
-            </a>
-
-            <button
-              onClick={() => copyToClipboard(JSON.stringify(JSON.parse(manifestContent), null, 2), 'manifest')}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-2 border border-slate-700 transition-all cursor-pointer"
-            >
-              {copied === 'manifest' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              <span>Скопировать ТЗ для другого ИИ</span>
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Instant 1-Line Command Section */}
+      {/* Config */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <Settings className="w-4 h-4 text-cyan-400" />
+            <span>Настройки установки</span>
+          </h2>
+          <span className={`text-[11px] font-mono px-2.5 py-1 rounded-full border ${
+            installer.status === 'running'
+              ? 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+              : installer.status === 'done'
+              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+              : installer.status === 'stopped'
+              ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+              : 'bg-slate-800 text-slate-400 border-slate-700'
+          }`}>
+            {installer.status === 'running' ? 'ВЫПОЛНЯЕТСЯ' : installer.status === 'done' ? 'ГОТОВО' : installer.status === 'stopped' ? 'ОСТАНОВЛЕНА' : 'ОЖИДАНИЕ'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* Port */}
+          <div>
+            <label className="text-slate-400 text-xs mb-1 block flex items-center justify-between">
+              <span className="flex items-center gap-1.5"><Globe className="w-3.5 h-3.5 text-cyan-400" /> Порт веб-панели:</span>
+              {scanPort && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1024}
+                max={65535}
+                value={port}
+                disabled={running}
+                onChange={(e) => setPort(e.target.value)}
+                className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono text-sm disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={running || scanPort}
+                onClick={scanFreePort}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 cursor-pointer disabled:opacity-50"
+              >
+                Авто
+              </button>
+            </div>
+          </div>
+
+          {/* Install dir */}
+          <div>
+            <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1.5">
+              <HardDrive className="w-3.5 h-3.5 text-cyan-400" /> Каталог установки:
+            </label>
+            <input
+              type="text"
+              value={installDir}
+              disabled={running}
+              onChange={(e) => setInstallDir(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono text-sm disabled:opacity-50"
+            />
+          </div>
+
+          {/* Data dir */}
+          <div>
+            <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1.5">
+              <Boxes className="w-3.5 h-3.5 text-cyan-400" /> Каталог данных:
+            </label>
+            <input
+              type="text"
+              value={dataDir}
+              disabled={running}
+              onChange={(e) => setDataDir(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono text-sm disabled:opacity-50"
+            />
+          </div>
+        </div>
+
+        {/* Component toggles */}
+        <div>
+          <label className="text-slate-400 text-xs mb-1.5 block">Компоненты для установки:</label>
+          <div className="flex flex-wrap gap-2">
+            {toggle('Docker Engine', installDocker, setInstallDocker, running)}
+            {toggle('Node.js LTS', installNode, setInstallNode, running)}
+            {toggle('NVIDIA Toolkit', installNvidia, setInstallNvidia, running)}
+            {toggle(' CLI', installLms, setInstallLms, running)}
+            {toggle('🛡 Dry-run (тест)', dryRun, setDryRun, running)}
+          </div>
+        </div>
+
+        {/* Module preload */}
+        <div>
+          <label className="text-slate-400 text-xs mb-1.5 block">
+            Модули для предзагрузки (образы ОС — появятся в разделе «Модули»):
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {IMAGE_MODULES.map((m) => {
+              const on = preloadModules.has(m.id);
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={running}
+                  onClick={() => toggleModule(m.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${
+                    on
+                      ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-200'
+                      : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+                  }`}
+                >
+                  {on ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                  {m.label}
+                  <span className="opacity-60 font-mono text-[10px]">{m.image}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Actions + progress */}
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-slate-800">
+          <div className="flex items-center gap-3 flex-wrap">
+            {installer.status === 'running' ? (
+              <button
+                onClick={stopInstall}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg shadow-rose-600/25 flex items-center gap-2 cursor-pointer"
+              >
+                <Square className="w-4 h-4" />
+                Остановить
+              </button>
+            ) : (
+              <button
+                onClick={startInstall}
+                disabled={starting}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 flex items-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {installer.status === 'done' ? 'Запустить заново' : 'Запустить установку'}
+              </button>
+            )}
+
+            {installer.totalSteps > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-40 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      installer.status === 'done' ? 'bg-emerald-500' : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {installer.currentStep}/{installer.totalSteps}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {dryRun && installer.status === 'idle' && (
+            <span className="text-[10px] text-amber-300/80 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> Режим dry-run: команды выводятся в лог, но не выполняются
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Progress: steps + terminal */}
+      {(installer.logs.length > 0 || installer.status === 'running' || installer.status === 'done') && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Steps */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5 lg:col-span-1">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 mb-1">
+              <ListChecks className="w-4 h-4 text-blue-400" />
+              <span>Шаги установки</span>
+            </h2>
+            {installer.steps.map((s, i) => (
+              <div key={s.id} className="flex items-start gap-2.5">
+                <StepIcon status={s.status} />
+                <div className="min-w-0">
+                  <div className="text-xs text-slate-200 font-medium">
+                    <span className="text-slate-500 font-mono mr-1.5">{i + 1}.</span>
+                    {s.title}
+                  </div>
+                  {s.detail && <div className="text-[10px] text-slate-500 truncate">{s.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Terminal */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 lg:col-span-2 flex flex-col min-h-[280px]">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                <span>Живой лог установки</span>
+              </h2>
+              <button
+                onClick={() => copyToClipboard(installer.logs.map((l) => `[${l.t}] ${l.msg}`).join('\n'), 'log')}
+                className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                {copied === 'log' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                {copied === 'log' ? 'Скопировано' : 'Скопировать лог'}
+              </button>
+            </div>
+            <div
+              ref={termRef}
+              className="flex-1 rounded-xl bg-slate-950 border border-slate-800 p-3 font-mono text-[11px] leading-relaxed overflow-y-auto max-h-[420px]"
+            >
+              {installer.logs.length === 0 ? (
+                <div className="text-slate-600 text-center py-10">
+                  Лог появится после запуска установки
+                </div>
+              ) : (
+                installer.logs.map((l, i) => (
+                  <div key={i} className={`whitespace-pre-wrap break-all ${logColor(l.level)}`}>
+                    <span className="text-slate-600">{l.t}</span>{' '}
+                    {l.level === 'cmd' ? <span className="text-blue-300">$</span> : ''} {l.msg}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= INSTANT INSTALL COMMAND ================= */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Terminal className="w-5 h-5 text-emerald-400" />
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              Команда быстрой установки в 1 клик (Linux Bash)
+              Установка на другой сервер в 1 команду (Linux Bash)
             </h2>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Ubuntu / Debian / CentOS</span>
+          <a
+            href="/api/installer/script"
+            download="fixcat-install.sh"
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/20 flex items-center gap-1.5 transition-colors text-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Скачать install.sh
+          </a>
         </div>
 
         <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 font-mono text-xs">
@@ -427,36 +812,32 @@ Write-Host "🎉 Готово! Панель открывается по адре
         </div>
       </div>
 
-      {/* Diagnostics Check */}
+      {/* ================= DIAGNOSTICS ================= */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              <span>Диагностика готовности текущей системы к установке</span>
+              <span>Диагностика сервера</span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Проверка компонентов, сокета Docker, ускорителей NVIDIA CUDA и свободных портов
+              Проверка Docker, GPU NVIDIA, памяти и свободных портов
             </p>
           </div>
-
           <button
             onClick={runDiagnostics}
             disabled={loadingDiagnostics}
             className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingDiagnostics ? 'animate-spin text-cyan-400' : ''}`} />
-            <span>Перепроверить</span>
+            Перепроверить
           </button>
         </div>
 
         {diagnostics && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {/* Docker Status */}
             <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              diagnostics.dockerActive
-                ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
-                : 'bg-amber-950/20 border-amber-500/30 text-amber-200'
+              diagnostics.dockerActive ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200' : 'bg-amber-950/20 border-amber-500/30 text-amber-200'
             }`}>
               <div>
                 <div className="font-semibold text-white">Docker Daemon</div>
@@ -465,19 +846,16 @@ Write-Host "🎉 Готово! Панель открывается по адре
               <span className={`px-2 py-0.5 rounded font-mono font-bold ${
                 diagnostics.dockerActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
               }`}>
-                {diagnostics.dockerActive ? 'АКТИВЕН' : 'НЕТ СОКЕТА'}
+                {diagnostics.dockerActive ? 'АКТИВЕН' : 'НЕТ СИСТЕМЫ'}
               </span>
             </div>
 
-            {/* GPU CUDA Status */}
             <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
-              diagnostics.gpuDetected
-                ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
-                : 'bg-slate-950 border-slate-800 text-slate-400'
+              diagnostics.gpuDetected ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200' : 'bg-slate-950 border-slate-800 text-slate-400'
             }`}>
               <div>
-                <div className="font-semibold text-white">NVIDIA GPU &amp; CUDA</div>
-                <div className="text-[11px] opacity-80 mt-0.5">{diagnostics.gpuCount} Ускорителя ({diagnostics.vramTotalGb} GB VRAM)</div>
+                <div className="font-semibold text-white">NVIDIA GPU & CUDA</div>
+                <div className="text-[11px] opacity-80 mt-0.5">{diagnostics.gpuCount} GPU ({diagnostics.vramTotalGb} GB VRAM)</div>
               </div>
               <span className={`px-2 py-0.5 rounded font-mono font-bold ${
                 diagnostics.gpuDetected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
@@ -486,39 +864,38 @@ Write-Host "🎉 Готово! Панель открывается по адре
               </span>
             </div>
 
-            {/* Node & Memory */}
             <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
               <div>
                 <div className="font-semibold text-white">Память RAM</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{diagnostics.memoryFreeGb} GB свободно из {diagnostics.memoryTotalGb} GB</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {diagnostics.memoryFreeGb} GB свободно из {diagnostics.memoryTotalGb} GB
+                </div>
               </div>
-              <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-mono font-bold">
-                OK
-              </span>
+              <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-mono font-bold">OK</span>
             </div>
 
-            {/* Ports status */}
             <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
               <div>
-                <div className="font-semibold text-white">Порты 3000 &amp; 1234</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">Порт 3000 (Панель) / 1234 (AI)</div>
+                <div className="font-semibold text-white">Node.js</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{diagnostics.nodeVersion} · {diagnostics.os}</div>
               </div>
-              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 font-mono font-bold">
-                ГОТОВЫ
-              </span>
+              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 font-mono font-bold">OK</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Tabs for Installation Files View */}
+      {/* ================= EXPORT KIT ================= */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center space-x-2">
             <Code2 className="w-5 h-5 text-blue-400" />
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              Исходный код компонентов установщика
-            </h2>
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                Исходные файлы для сборки установщика
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">Манифесты и конфигурация для дистрибутивов / другого ИИ</p>
+            </div>
           </div>
 
           <button
@@ -526,26 +903,18 @@ Write-Host "🎉 Готово! Панель открывается по адре
             className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm shadow-blue-600/20 transition-all cursor-pointer self-start sm:self-auto"
           >
             {copied === activeFileTab ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied === activeFileTab ? 'Скопировано!' : 'Скопировать текущий файл'}</span>
+            <span>{copied === activeFileTab ? 'Скопировано!' : 'Скопировать файл'}</span>
           </button>
         </div>
 
-        {/* File Tabs Header */}
         <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs">
-          {[
-            { id: 'install.sh', label: 'install.sh (Linux Script)', icon: Terminal },
-            { id: 'docker-compose.yml', label: 'docker-compose.yml', icon: Layers },
-            { id: 'Dockerfile', label: 'Dockerfile', icon: Server },
-            { id: 'fixcat.service', label: 'fixcat.service (systemd)', icon: Zap },
-            { id: 'install.ps1', label: 'install.ps1 (Windows)', icon: FileText },
-            { id: 'manifest.json', label: 'manifest.json (AI Schema)', icon: Code2 },
-          ].map((tab) => {
+          {fileTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeFileTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveFileTab(tab.id as any)}
+                onClick={() => setActiveFileTab(tab.id)}
                 className={`px-3 py-2 rounded-xl font-medium transition-all flex items-center space-x-2 shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/20'
@@ -559,7 +928,6 @@ Write-Host "🎉 Готово! Панель открывается по адре
           })}
         </div>
 
-        {/* Code View Canvas */}
         <div className="relative rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
           <pre className="p-4 text-xs font-mono text-slate-300 overflow-x-auto max-h-[420px] leading-relaxed select-all">
             {currentScriptContent}
@@ -567,25 +935,26 @@ Write-Host "🎉 Готово! Панель открывается по адре
         </div>
       </div>
 
-      {/* Guide for other AI Prompting */}
+      {/* Guide */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>Инструкция для создания установщика в другом ИИ (ChatGPT / Claude / Cursor)</span>
+          <span>Инструкция</span>
         </h3>
-
         <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2 leading-relaxed">
           <p>
-            <b>Шаг 1:</b> Нажмите кнопку <b>«Скопировать ТЗ для другого ИИ»</b> вверху этой страницы (она скопирует полный структурированный JSON-манифест проекта).
+            <b>1.</b> На этой машине — настройте параметры и нажмите <b className="text-blue-300">«Запустить установку»</b>.
+            Процедура выполнит проверки, поставит Docker/Node.js/GPU/, предзагрузит ОС-модули,
+            соберёт панель и создаст службу systemd с выбранным портом.
           </p>
           <p>
-            <b>Шаг 2:</b> Откройте диалог с другим ИИ и отправьте ему такой промпт:
+            <b>2.</b> На другом сервере — выполните <code className="text-emerald-300"> {oneLinerCommand} </code>
+            для интерактивного <b>-style</b> установщика (выбор порта, директории, компонентов).
           </p>
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-emerald-300 text-[11px] select-all">
-            "Вот структурированный манифест моей веб-панели управления Fixcat OS Manager: [вставьте скопированный JSON]. Помоги мне сделать полноценный установочный дистрибутив (Inno Setup / Electron GUI wrapper / Python GUI installer / Debian deb-пакет) со встроенной проверкой зависимостей Docker и NVIDIA GPU."
-          </div>
-          <p className="text-slate-400 pt-1">
-            Другой ИИ мгновенно поймет архитектуру панелей, зависимости портов, пути к базе данных `/data/users.json` и сгенерирует готовый `setup.exe` или `.deb` пакет.
+          <p>
+            <b>3.</b> Для дистрибутива — скопируйте файлы из раздела выше (<code>install.sh</code>,
+            <code> docker-compose.yml</code>, <code>Dockerfile</code>, <code>fixcat.service</code>, <code>install.ps1</code>)
+            и манифест <code>manifest.json</code> для генерации setup.exe/.deb в другом ИИ.
           </p>
         </div>
       </div>
