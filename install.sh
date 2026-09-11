@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  Fixcat OS Manager — установщик уровня  (интерактивный/автоматический)
+#  Авто-выбор свободного порта, выбор директорий, установка Docker / Node.js /
+#  NVIDIA Toolkit /  CLI, сборка панели, systemd-служба.
+#
+#  Примеры:
+#    sudo bash install.sh                       # интерактивный режим
+#    sudo bash install.sh --port 8080 --yes     # полностью автоматический
+#    sudo bash install.sh --dry-run             # превью без изменений
+# =============================================================================
+
+set -euo pipefail
+
+REPO_URL="https://github.com/fixcat-offical/Fixcat-OS-Manager.git"
+INSTALL_DIR="/opt/fixcat-os-manager"
+DATA_DIR="/opt/fixcat-os-manager/data"
+PORT="3000"
+ASSUME_YES=0
+DRY_RUN=0
+INSTALL_DOCKER=1
+INSTALL_NODE=1
+INSTALL_NVIDIA=1
+INSTALL_LMS=1
+PRELOAD_OS=1
+
+# ---------- аргументы командной строки ----------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port)        PORT="$2"; shift 2 ;;
+    --dir)         INSTALL_DIR="$2"; DATA_DIR="$2/data"; shift 2 ;;
+    --data-dir)    DATA_DIR="$2"; shift 2 ;;
+    --yes|-y)      ASSUME_YES=1; shift ;;
+    --dry-run)     DRY_RUN=1; shift ;;
+    --no-docker)   INSTALL_DOCKER=0; shift ;;
+    --no-node)     INSTALL_NODE=0; shift ;;
+    --no-nvidia)   INSTALL_NVIDIA=0; shift ;;
+    --no-lms)      INSTALL_LMS=0; shift ;;
+    --no-images)   PRELOAD_OS=0; shift ;;
+    -h|--help)     grep "^#" "$0"; exit 0 ;;
+    *) echo "❌ Неизвестный аргумент: $1"; exit 1 ;;
+  esac
+done
+
+COLOR_RESET='\033[0m'; COLOR_BLUE='\033[0;34m'; COLOR_GREEN='\033[0;32m'
+COLOR_YELLOW='\033[0;33m'; COLOR_RED='\033[0;31m'; COLOR_CYAN='\033[0;36m'
+
+info()  { echo -e "${COLOR_BLUE}[INFO]${COLOR_RESET} $*"; }
+ok()    { echo -e "${COLOR_GREEN}[  OK ]${COLOR_RESET} $*"; }
+warn()  { echo -e "${COLOR_YELLOW}[WARN ]${COLOR_RESET} $*"; }
+fail()  { echo -e "${COLOR_RED}[FAIL ]${COLOR_RESET} $*"; }
+step()  { echo; echo -e "${COLOR_CYAN}════════════════════════════════════════════════════════════${COLOR_RESET}"; echo -e "${COLOR_CYAN}  $*${COLOR_RESET}"; echo -e "${COLOR_CYAN}════════════════════════════════════════════════════════════${COLOR_RESET}"; }
+
+exec_cmd() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    info "[DRY-RUN] $*"
+    return 0
+  fi
+  "$@"
+}
+
+# ---------- права root ----------
+if [[ "$EUID" -ne 0 ]]; then
+  fail "Скрипт должен запускаться от root. Используйте: sudo bash install.sh"
+  exit 1
+fi
+
+# ---------- определение ОС ----------
+detect_os() {
+  if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    echo "$ID"
+  else
+    echo "unknown"
+  fi
+}
+OS_ID="$(detect_os)"
+
+banner() {
+  echo
+  echo "   ███████╗██╗██╗  ██╗ ██████╗ █████╗ ████████╗"
+  echo "   ██╔════╝██║╚██╗██╔╝██╔════╝██╔══██╗╚══██╔══╝"
+  echo "   █████╗  ██║ ╚███╔╝ ██║     ███████║   ██║   "
+  echo "   ██╔══╝  ██║ ██╔██╗ ██║     ██╔══██║   ██║   "
+  echo "   ██║     ██║██╔╝ ██╗╚██████╗██║  ██║   ██║   "
+  echo "   ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   "
+  echo "      OS Manager — интерактивный установщик v2.5"
+  echo
+}
+
+port_free() {
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -tlnp 2>/dev/null | grep -q ":$1 "
+  else
+    ! netstat -tlnp 2>/dev/null | grep -q ":$1 "
+  fi
+}
+
+pick_port() {
+  if [[ "$ASSUME_YES" == "1" ]]; then
+    if ! port_free "$PORT"; then
+      for p in $(seq $((PORT+1)) 60100); do
+        if port_free "$p"; then PORT="$p"; break; fi
+      done
+    fi
+    return
+  fi
+  while true; do
+    local want
+    read -r -p "🔌 Введите порт веб-панели [сейчас: $PORT, пусто=оставить]: " want
+    [[ -n "$want" ]] && PORT="$want"
+    if port_free "$PORT"; then ok "Порт $PORT свободен."; return; fi
+    warn "Порт $PORT занят. Ищу ближайший свободный..."
+    for p in $(seq $((PORT+1)) 60100); do
+      if port_free "$p"; then
+        info "Свободный порт: $p"
+        read -r -p "Использовать $p? [Y/n]: " use
+        [[ "${use,,}" != "n" ]] && { PORT="$p"; ok "Выбран порт $PORT."; return; }
+        break
+      fi
+    done
+  done
+}
+
+pick_dir() {
+  if [[ "$ASSUME_YES" == "1" ]]; then return; fi
+  local d
+  read -r -p "📁 Директория установки [${INSTALL_DIR}]: " d
+  [[ -n "$d" ]] && { INSTALL_DIR="$d"; DATA_DIR="$d/data"; }
+  read -r -p "📁 Директория данных [${DATA_DIR}]: " d
+  [[ -n "$d" ]] && DATA_DIR="$d"
+}
+
+prompt_yn() {
+  local label="$1" default="$2"
+  if [[ "$ASSUME_YES" == "1" ]]; then
+    [[ "$default" == "1" ]] && return 0 || return 1
+  fi
+  while true; do
+    read -r -p "❓ $label [Y/n]: " a
+    [[ -z "$a" ]] && a="$default"
+    case "${a,,}" in y|yes) return 0 ;; n|no) return 1 ;; *) ;; esac
+  done
+}
+
+# =============================================================================
+banner
+step "1/10 — Конфигурация установки"
+echo "  ОС:        ${OS_ID:-unknown} / $(uname -m)"
+echo "  Node.js:   $(node --version 2>/dev/null || echo 'не установлен')"
+echo "  Docker:    $(command -v docker >/dev/null && echo 'установлен' || echo 'не установлен')"
+echo "  GPU:       $(command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo 'NVIDIA' || echo '—')"
+pick_port
+pick_dir
+echo
+info "Итоговая конфигурация:"
+echo "  · Порт панели:      $PORT"
+echo "  · Директория:       $INSTALL_DIR"
+echo "  · Данные:           $DATA_DIR"
+echo
+
+step "2/10 — Системные зависимости"
+case "$OS_ID" in
+  ubuntu|debian|kali|linuxmint)
+    DEPS="curl git ca-certificates gnupg lsb-release unzip xz-utils build-essential"
+    exec_cmd apt-get update -y
+    exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y $DEPS 2>/dev/null || warn "Часть зависимостей не установилась." ;;
+  centos|rhel|rocky|almalinux|fedora)
+    DEPS="curl git ca-certificates gnupg unzip xz"
+    exec_cmd dnf install -y $DEPS 2>/dev/null || yum install -y $DEPS 2>/dev/null || warn "Часть зависимостей не установилась." ;;
+  arch)
+    exec_cmd pacman -Sy --noconfirm curl git base-devel 2>/dev/null || true ;;
+  *) warn "ОС ${OS_ID} не распознана — ставлю зависимости вручную." ;;
+esac
+ok "Базовые компоненты готовы."
+
+step "3/10 — Docker Engine"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  ok "Docker уже активен."
+elif [[ "$INSTALL_DOCKER" == "0" ]]; then
+  warn "Установка Docker пропущена (флаг --no-docker)."
+else
+  exec_cmd curl -fsSL https://get.docker.com | sh
+  exec_cmd systemctl enable --now docker >/dev/null 2>&1 || exec_cmd service docker start >/dev/null 2>&1 || true
+  ok "Docker Engine установлен."
+fi
+
+step "4/10 — Node.js LTS"
+NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v//;s/\..*//')
+if [[ -n "$NODE_MAJOR" && "$NODE_MAJOR" -ge 18 ]]; then
+  ok "Node.js v$NODE_MAJOR уже установлен."
+elif [[ "$INSTALL_NODE" == "0" ]]; then
+  warn "Установка Node.js пропущена (флаг --no-node)."
+else
+  case "$OS_ID" in
+    ubuntu|debian|kali|linuxmint)
+      exec_cmd curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs ;;
+    centos|rhel|rocky|almalinux|fedora)
+      exec_cmd curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+      exec_cmd dnf install -y nodejs ;;
+    *) warn "Нет автоматической установки Node для $OS_ID — установите Node.js 18+ вручную." ;;
+  esac
+  ok "Node.js v$(node --version | sed 's/v//') установлен."
+fi
+
+step "5/10 — NVIDIA Container Toolkit (GPU)"
+if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi -L >/dev/null 2>&1; then
+  warn "NVIDIA GPU не обнаружен — пропуск."
+elif command -v nvidia-ctk >/dev/null 2>&1; then
+  ok "Toolkit уже установлен."
+elif [[ "$INSTALL_NVIDIA" == "0" ]]; then
+  warn "Пропущено (флаг --no-nvidia)."
+else
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null || true
+  curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list 2>/dev/null || true
+  exec_cmd apt-get update -y
+  exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-container-toolkit 2>/dev/null || warn "Ручная установка toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+  exec_cmd nvidia-ctk runtime configure --runtime=docker 2>/dev/null || true
+  ok "NVIDIA Container Toolkit настроен."
+fi
+
+step "6/10 —  CLI ()"
+if command -v lms >/dev/null 2>&1; then
+  ok "lms уже установлен."
+elif [[ "$INSTALL_LMS" == "0" ]]; then
+  warn "Установка lms пропущена (флаг --no-lms)."
+else
+  exec_cmd curl -fsSL https://lmstudio.ai/install | sh || warn "Автоустановка lms не удалась — CLI можно поставить позже из раздела «Модули»."
+  ok " CLI готов."
+fi
+
+step "7/10 — Модули панели (образы ОС)"
+if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
+  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "lscr.io/linuxserver/webtop:debian-xfce" "lscr.io/linuxserver/webtop:kali-xfce" "lscr.io/linuxserver/webtop:alpine-xfce" "dockur/windows:xp" )
+  for img in "${IMAGES[@]}"; do
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      ok "Образ уже загружен: $img"
+    else
+      info "Docker pull: $img (может занять время)..."
+      exec_cmd docker pull "$img" || warn "Не удалось загрузить $img (можно докачать позже из панели «Модули»)."
+    fi
+  done
+  ok "Модули ОС загружены."
+else
+  warn "Загрузка образов пропущена или Docker недоступен."
+fi
+
+step "8/10 — Сборка панели"
+mkdir -p "$INSTALL_DIR" "$DATA_DIR"
+cd "$INSTALL_DIR"
+if [[ "$DRY_RUN" != "1" ]]; then
+  if [[ -f package.json ]]; then
+    info "Проект уже в $INSTALL_DIR — обновляю..."
+    git pull --ff-only 2>/dev/null || true
+  else
+    info "Клонирую Fixcat OS Manager..."
+    git clone "$REPO_URL" . 2>/dev/null || { git init -q; git remote add origin "$REPO_URL"; git fetch -q origin; git checkout -q origin/main; }
+  fi
+  info "Зависимости (npm ci)..."
+  npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
+  info "Продакшн-сборка..."
+  npm run build
+  cat > .env <<EOF
+# Fixcat OS Manager
+PORT=$PORT
+NODE_ENV=production
+FIXCAT_DATA_DIR=$DATA_DIR
+FIXCAT_INSTALL_DIR=$INSTALL_DIR
+EOF
+  ok "Панель собрана."
+else
+  info "[DRY-RUN] git clone / npm run build / .env — без изменений."
+fi
+
+step "9/10 — Служба systemd"
+if [[ -d /run/systemd/system ]]; then
+  cat > /etc/systemd/system/fixcat.service <<EOF
+[Unit]
+Description=Fixcat OS Manager - Web Panel &  Control
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment=PORT=$PORT
+Environment=NODE_ENV=production
+Environment=FIXCAT_DATA_DIR=$DATA_DIR
+ExecStart=/usr/bin/node $INSTALL_DIR/dist/server.js
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  exec_cmd systemctl daemon-reload
+  exec_cmd systemctl enable fixcat.service
+  exec_cmd systemctl restart fixcat.service
+  ok "Служба fixcat.service запущена."
+else
+  warn "systemd не найден — запустите вручную: cd $INSTALL_DIR && NODE_ENV=production node dist/server.js"
+fi
+
+step "10/10 — Готово"
+LOCAL_IP=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -Ev '^$' | head -1)
+echo
+ok "Установка Fixcat OS Manager завершена!"
+echo
+echo "   🌐 Веб-панель:     http://${LOCAL_IP:-<server-ip>}:$PORT"
+echo "   📁 Установка:      $INSTALL_DIR"
+echo "   📦 Данные:         $DATA_DIR"
+echo
+echo "   ⚙️  Управление:    systemctl status fixcat   |  systemctl restart fixcat"
+echo "   📜 Логи:           journalctl -u fixcat -f"
+echo
