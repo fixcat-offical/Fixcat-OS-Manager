@@ -61,38 +61,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const ramPercent = systemInfo ? systemInfo.memory.percent : 0;
   const isDockerActive = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
 
-  const gpus = systemInfo?.gpus || [
-    {
-      id: 0,
-      name: 'NVIDIA GeForce RTX 4090 (Primary GPU)',
-      usagePercent: 18,
-      vramUsedMb: 4850,
-      vramTotalMb: 24576,
-      vramPercent: 19.7,
-      temperatureC: 46,
-      powerWatts: 115,
-    },
-    {
-      id: 1,
-      name: 'NVIDIA GeForce RTX 3080 (Secondary GPU)',
-      usagePercent: 6,
-      vramUsedMb: 1820,
-      vramTotalMb: 10240,
-      vramPercent: 17.8,
-      temperatureC: 41,
-      powerWatts: 42,
-    },
-  ];
+  const gpus = systemInfo?.gpus || [];
 
   // Chart data formatting
   const chartData = history.slice(-25).map((point) => {
-    return {
+    const d: Record<string, string | number> = {
       time: point.time,
       hostCpu: point.hostCpu,
       hostRam: point.hostRam,
-      gpu0: point.gpuUsage?.[0] ?? 0,
-      gpu1: point.gpuUsage?.[1] ?? 0,
     };
+    if (gpus.length > 0) d.gpu0 = point.gpuUsage?.[0] ?? 0;
+    if (gpus.length > 1) d.gpu1 = point.gpuUsage?.[1] ?? 0;
+    return d;
   });
 
   return (
@@ -229,56 +209,77 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Zap className="w-4 h-4 text-emerald-400" />
-            <span>Мониторинг видеокарт GPU ({gpus.length} ускорителя)</span>
+            <span>Мониторинг видеокарт GPU {gpus.length > 0 && `(${gpus.length} ускорителя)`}</span>
           </h2>
           <span className="text-xs text-slate-400 font-mono">
-            NVIDIA CUDA &amp;  Acceleration
+            {gpus.length > 0 ? (gpus[0].name.includes('NVIDIA') ? 'NVIDIA CUDA &  Acceleration' : 'Intel Integrated GPU') : 'Видеокарта не обнаружена'}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {gpus.map((gpu) => (
-            <div
-              key={gpu.id}
-              className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 relative overflow-hidden"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
-                      GPU {gpu.id}
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono">
-                      {gpu.temperatureC}°C &bull; {gpu.powerWatts}W
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-white text-sm mt-1">{gpu.name}</h3>
-                </div>
-                <div className="text-right">
-                  <span className="text-xl font-bold font-mono text-emerald-400">
-                    {gpu.usagePercent}%
-                  </span>
-                  <div className="text-[10px] text-slate-400">Загрузка ГПУ</div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                <div className="flex justify-between text-xs font-mono">
-                  <span className="text-slate-400">Видеопамять VRAM:</span>
-                  <span className="text-slate-200">
-                    {Math.round(gpu.vramUsedMb / 1024 * 10) / 10} GB / {Math.round(gpu.vramTotalMb / 1024)} GB ({gpu.vramPercent}%)
-                  </span>
-                </div>
-                <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-                  <div
-                    className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${gpu.vramPercent}%` }}
-                  />
-                </div>
-              </div>
+        {gpus.length === 0 ? (
+          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center">
+            <div className="w-10 h-10 rounded-2xl bg-slate-800 text-slate-500 flex items-center justify-center mx-auto mb-2">
+              <Zap className="w-5 h-5" />
             </div>
-          ))}
-        </div>
+            <p className="text-xs text-slate-400">Видеокарта не обнаружена на этом хосте</p>
+            <p className="text-[11px] text-slate-500 mt-1">Подключите NVIDIA GPU или используйте хост с встроенной Intel графикой</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {gpus.map((gpu) => (
+              <div
+                key={gpu.id}
+                className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 relative overflow-hidden"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
+                        GPU {gpu.id}
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {gpu.temperatureC > 0 && <>{gpu.temperatureC}°C &bull; </>}
+                        {gpu.powerWatts > 0 && <>{gpu.powerWatts}W</>}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-white text-sm mt-1">{gpu.name}</h3>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-bold font-mono text-emerald-400">
+                      {gpu.usagePercent}%
+                    </span>
+                    <div className="text-[10px] text-slate-400">Загрузка ГПУ</div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                  {gpu.vramTotalMb > 0 && gpu.vramTotalMb > gpu.vramUsedMb ? (
+                    <>
+                      <div className="flex justify-between text-xs font-mono">
+                        <span className="text-slate-400">
+                          {gpu.name.includes('Intel') ? 'Системная память (shared):' : 'Видеопамять VRAM:'}
+                        </span>
+                        <span className="text-slate-200">
+                          {Math.round(gpu.vramUsedMb / 1024 * 10) / 10} GB / {Math.round(gpu.vramTotalMb / 1024)} GB ({gpu.vramPercent}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div
+                          className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${gpu.vramPercent}%` }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      {gpu.name.includes('Intel') ? 'Встроенная графика — выделенной памяти нет' : 'Нет данных о памяти'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Main Section: OS Containers Quick Access */}
@@ -520,7 +521,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div>
             <h3 className="text-sm font-bold text-white">Мониторинг нагрузки хоста и GPU в реальном времени</h3>
-            <p className="text-xs text-slate-400">Фактическая нагрузка процессора (CPU %), RAM (%) и ускорителей GPU 0 / GPU 1</p>
+            <p className="text-xs text-slate-400">
+              {gpus.length > 0
+                ? `Фактическая нагрузка процессора (CPU %), RAM (%) и ${gpus.length === 1 ? gpus[0].name : `ускорителей GPU 0 / GPU 1`}`
+                : 'Фактическая нагрузка процессора (CPU %) и оперативной памяти RAM (%)'}
+            </p>
           </div>
           <button
             onClick={() => onNavigateTab('resources')}
@@ -561,7 +566,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               />
               <Area type="monotone" dataKey="hostCpu" name="Хост CPU (%)" stroke="#3b82f6" fill="url(#hostCpuGrad)" strokeWidth={2} />
               <Area type="monotone" dataKey="hostRam" name="Хост RAM (%)" stroke="#06b6d4" fill="url(#hostRamGrad)" strokeWidth={2} />
-              <Area type="monotone" dataKey="gpu0" name="GPU 0 Load (%)" stroke="#10b981" fill="url(#gpuGrad)" strokeWidth={2} />
+              {gpus.length > 0 && (
+                <Area type="monotone" dataKey="gpu0" name="GPU 0 Load (%)" stroke="#10b981" fill="url(#gpuGrad)" strokeWidth={2} />
+              )}
             </AreaChart>
           </ResponsiveContainer>
         </div>

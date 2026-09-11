@@ -6,7 +6,7 @@ import path from 'path';
 import net from 'net';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { registerInstallerRoutes, getInstallerScript } from './installer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -78,7 +78,7 @@ let appConfig = {
   autoDetectNoVnc: true,
 };
 
-// Helper to query real GPU stats via nvidia-smi with system fallback
+// Helper to query real GPU stats via nvidia-smi with Intel iGPU fallback
 interface GpuInfo {
   id: number;
   name: string;
@@ -89,6 +89,116 @@ interface GpuInfo {
   temperatureC: number;
   powerWatts: number;
   driverVersion?: string;
+}
+
+const INTEL_IGPU_ARCH: Record<string, string> = {
+  'Sandy Bridge':  'Intel HD Graphics (Sandy Bridge)',
+  'Ivy Bridge':    'Intel HD Graphics 4000',
+  'Haswell':       'Intel HD Graphics 4600',
+  'Broadwell':     'Intel HD Graphics 5300/5500/6000',
+  'Skylake':       'Intel HD Graphics 530',
+  'Kaby Lake':     'Intel UHD Graphics 620',
+  'Coffee Lake':   'Intel UHD Graphics 630',
+  'Amber Lake':    'Intel UHD Graphics 620',
+  'Whiskey Lake':  'Intel UHD Graphics 620',
+  'Comet Lake':    'Intel UHD Graphics 630',
+  'Ice Lake':      'Intel Iris Plus Graphics G4/G7',
+  'Tiger Lake':    'Intel Iris Xe Graphics',
+  'Alder Lake':    'Intel UHD Graphics 730/770',
+  'Raptor Lake':   'Intel UHD Graphics 730/770',
+  'Meteor Lake':   'Intel Arc Graphics',
+  'Arrow Lake':    'Intel Arc Graphics',
+  'Lunar Lake':    'Intel Arc Graphics 140V',
+};
+
+function readIntelGpuArch(): string | null {
+  try {
+    const cpuinfo = fs.readFileSync('/proc/cpuinfo', 'utf-8');
+    const m = cpuinfo.match(/^model name\s*:\s*(.+)$/mi);
+    if (!m) return null;
+    const name = m[1];
+    for (const arch of Object.keys(INTEL_IGPU_ARCH)) {
+      if (name.includes(arch)) return arch;
+    }
+  } catch {}
+  return null;
+}
+
+function readSysfsInt(filename: string): number | null {
+  try {
+    const v = parseInt(fs.readFileSync(filename, 'utf-8').trim(), 10);
+    return isNaN(v) ? null : v;
+  } catch { return null; }
+}
+
+function getIntelGpuInfo(): GpuInfo[] {
+  const arch = readIntelGpuArch();
+  if (!arch) return [];
+  const gpuName = INTEL_IGPU_ARCH[arch];
+
+  // Try to find DRM card path (e.g. /sys/class/drm/card0/device/)
+  let drmBase = '';
+  try {
+    const cards = fs.readdirSync('/sys/class/drm');
+    for (const c of cards) {
+      if (!c.startsWith('card') || c.includes('-')) continue;
+      const uevent = `/sys/class/drm/${c}/device/uevent`;
+      try {
+        const uev = fs.readFileSync(uevent, 'utf-8');
+        if (uev.includes('8086')) { drmBase = `/sys/class/drm/${c}/device`; break; }
+      } catch {}
+    }
+  } catch {}
+
+  // Read frequency info
+  let curFreq = readSysfsInt(`${drmBase}/gt_cur_freq_mhz`);
+  const maxFreq = readSysfsInt(`${drmBase}/gt_max_freq_mhz`);
+  // Fallback: /sys/kernel/gt/ on newer kernels
+  if (curFreq === null) curFreq = readSysfsInt('/sys/kernel/gt/RP0_cur_freq_mhz');
+  const maxFreqFallback = maxFreq ?? readSysfsInt('/sys/kernel/gt/RP0_max_freq_mhz');
+
+  const usagePercent = (curFreq && maxFreqFallback)
+    ? Math.min(100, Math.round((curFreq / maxFreqFallback) * 100))
+    : 0;
+
+  // Temperature from coretemp / hwmon
+  let temperatureC = 0;
+  try {
+    const hwmons = fs.readdirSync('/sys/class/hwmon');
+    for (const h of hwmons) {
+      try {
+        const name = fs.readFileSync(`/sys/class/hwmon/${h}/name`, 'utf-8').trim();
+        if (name === 'coretemp') {
+          const inputs = fs.readdirSync(`/sys/class/hwmon/${h}`).filter(f => f.startsWith('temp') && f.endsWith('_input'));
+          if (inputs.length > 0) {
+            const v = readSysfsInt(`/sys/class/hwmon/${h}/${inputs[0]}`);
+            if (v !== null) { temperatureC = Math.round(v / 1000); break; }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
+  // Shared memory: iGPU uses system RAM
+  const totalMemMb = Math.round(os.totalmem() / (1024 * 1024));
+
+  // Driver version from /sys
+  let driverVersion = '';
+  try {
+    driverVersion = fs.readFileSync(`${drmBase}/driver/module/version`, 'utf-8').trim();
+  } catch {}
+
+  return [{
+    id: 0,
+    name: gpuName,
+    usagePercent,
+    vramUsedMb: 0,
+    vramTotalMb: totalMemMb,
+    vramPercent: 0,
+    temperatureC,
+    powerWatts: 0,
+    driverVersion: driverVersion || undefined,
+  }];
 }
 
 function getGpuStats(): Promise<GpuInfo[]> {
@@ -122,31 +232,9 @@ function getGpuStats(): Promise<GpuInfo[]> {
           return resolve(gpus);
         }
 
-        // Return multi-GPU telemetry stats (GPU 0 & GPU 1)
-        resolve([
-          {
-            id: 0,
-            name: 'NVIDIA GeForce RTX 4090 (Primary GPU)',
-            usagePercent: Math.floor(Math.random() * 20 + 12),
-            vramUsedMb: 4850,
-            vramTotalMb: 24576,
-            vramPercent: 19.7,
-            temperatureC: 46,
-            powerWatts: 115,
-            driverVersion: '550.54',
-          },
-          {
-            id: 1,
-            name: 'NVIDIA GeForce RTX 3080 (Secondary GPU)',
-            usagePercent: Math.floor(Math.random() * 12 + 4),
-            vramUsedMb: 1820,
-            vramTotalMb: 10240,
-            vramPercent: 17.8,
-            temperatureC: 41,
-            powerWatts: 42,
-            driverVersion: '550.54',
-          },
-        ]);
+        // No NVIDIA — try Intel iGPU
+        const intelGpus = getIntelGpuInfo();
+        resolve(intelGpus);
       }
     );
   });

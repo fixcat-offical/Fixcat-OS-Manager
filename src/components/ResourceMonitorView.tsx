@@ -35,37 +35,19 @@ export const ResourceMonitorView: React.FC<ResourceMonitorViewProps> = ({
   const totalHostRamMb = systemInfo ? Math.round(systemInfo.memory.total / (1024 * 1024)) : 0;
   const usedHostRamMb = systemInfo ? Math.round(systemInfo.memory.used / (1024 * 1024)) : 0;
 
-  const gpus = systemInfo?.gpus || [
-    {
-      id: 0,
-      name: 'NVIDIA GeForce RTX 4090 (Primary GPU)',
-      usagePercent: 18,
-      vramUsedMb: 4850,
-      vramTotalMb: 24576,
-      vramPercent: 19.7,
-      temperatureC: 46,
-      powerWatts: 115,
-    },
-    {
-      id: 1,
-      name: 'NVIDIA GeForce RTX 3080 (Secondary GPU)',
-      usagePercent: 6,
-      vramUsedMb: 1820,
-      vramTotalMb: 10240,
-      vramPercent: 17.8,
-      temperatureC: 41,
-      powerWatts: 42,
-    },
-  ];
+  const gpus = systemInfo?.gpus || [];
 
   // Chart data formatting
-  const chartData = history.slice(-30).map((point) => ({
-    time: point.time,
-    hostCpu: point.hostCpu,
-    hostRam: point.hostRam,
-    gpu0: point.gpuUsage?.[0] ?? 0,
-    gpu1: point.gpuUsage?.[1] ?? 0,
-  }));
+  const chartData = history.slice(-30).map((point) => {
+    const d: Record<string, string | number> = {
+      time: point.time,
+      hostCpu: point.hostCpu,
+      hostRam: point.hostRam,
+    };
+    if (gpus.length > 0) d.gpu0 = point.gpuUsage?.[0] ?? 0;
+    if (gpus.length > 1) d.gpu1 = point.gpuUsage?.[1] ?? 0;
+    return d;
+  });
 
   // Per-container bar chart comparison
   const comparisonData = runningContainers.map((c) => {
@@ -121,27 +103,27 @@ export const ResourceMonitorView: React.FC<ResourceMonitorViewProps> = ({
 
         <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-            <span>GPU 0 (Primary)</span>
+            <span>{gpus.length > 0 ? `${gpus[0].name.includes('Intel') ? 'iGPU' : 'GPU'} 0` : 'GPU 0'}</span>
             <Zap className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold font-mono text-emerald-400">
-            {gpus[0]?.usagePercent || 0}%
+            {gpus.length > 0 ? `${gpus[0].usagePercent}%` : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono truncate">
-            {gpus[0]?.name || 'NVIDIA GPU'}
+            {gpus.length > 0 ? gpus[0].name : 'Не обнаружена'}
           </div>
         </div>
 
         <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-            <span>GPU 1 (Secondary)</span>
+            <span>{gpus.length > 1 ? 'GPU 1' : 'GPU 1'}</span>
             <Zap className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold font-mono text-emerald-400">
-            {gpus[1]?.usagePercent || 0}%
+            {gpus.length > 1 ? `${gpus[1].usagePercent}%` : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1 font-mono truncate">
-            {gpus[1]?.name || 'GPU 1'}
+            {gpus.length > 1 ? gpus[1].name : 'Не обнаружена'}
           </div>
         </div>
       </div>
@@ -151,51 +133,63 @@ export const ResourceMonitorView: React.FC<ResourceMonitorViewProps> = ({
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-2">
             <Zap className="w-4 h-4 text-emerald-400" />
-            <span>Детализация графических ускорителей (Multi-GPU)</span>
+            <span>Детализация графических ускорителей {gpus.length > 0 && `(Multi-GPU)`}</span>
           </h3>
-          <span className="text-[11px] text-slate-400 font-mono">NVIDIA CUDA Stats</span>
+          <span className="text-[11px] text-slate-400 font-mono">
+            {gpus.length > 0 ? (gpus[0].name.includes('NVIDIA') ? 'NVIDIA CUDA Stats' : 'Intel GPU Stats') : 'Нет данных'}
+          </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 font-semibold border-b border-slate-800">
-              <tr>
-                <th className="py-3 px-4">Индекс &amp; Модель GPU</th>
-                <th className="py-3 px-4">Загрузка ГПУ</th>
-                <th className="py-3 px-4">Занято VRAM</th>
-                <th className="py-3 px-4">Всего VRAM</th>
-                <th className="py-3 px-4">Температура</th>
-                <th className="py-3 px-4 text-right">Энергопотребление</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {gpus.map((gpu) => (
-                <tr key={gpu.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3 px-4 font-bold text-white flex items-center space-x-2">
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-mono font-bold text-[10px]">
-                      GPU {gpu.id}
-                    </span>
-                    <span>{gpu.name}</span>
-                  </td>
-                  <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                    {gpu.usagePercent}%
-                  </td>
-                  <td className="py-3 px-4 font-mono text-slate-200">
-                    {Math.round(gpu.vramUsedMb)} MB ({gpu.vramPercent}%)
-                  </td>
-                  <td className="py-3 px-4 font-mono text-slate-400">
-                    {Math.round(gpu.vramTotalMb)} MB
-                  </td>
-                  <td className="py-3 px-4 font-mono text-amber-300">
-                    {gpu.temperatureC} °C
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-cyan-300">
-                    {gpu.powerWatts} W
-                  </td>
+          {gpus.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-500">
+              Видеокарта не обнаружена на этом хосте
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Индекс &amp; Модель GPU</th>
+                  <th className="py-3 px-4">Загрузка ГПУ</th>
+                  <th className="py-3 px-4">{gpus[0]?.name?.includes('Intel') ? 'Системная RAM' : 'Занято VRAM'}</th>
+                  <th className="py-3 px-4">{gpus[0]?.name?.includes('Intel') ? 'Всего RAM' : 'Всего VRAM'}</th>
+                  <th className="py-3 px-4">Температура</th>
+                  <th className="py-3 px-4 text-right">{gpus[0]?.name?.includes('Intel') ? 'Частота' : 'Энергопотребление'}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {gpus.map((gpu) => (
+                  <tr key={gpu.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3 px-4 font-bold text-white flex items-center space-x-2">
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-mono font-bold text-[10px]">
+                        {gpu.name.includes('Intel') ? 'iGPU' : 'GPU'} {gpu.id}
+                      </span>
+                      <span>{gpu.name}</span>
+                    </td>
+                    <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                      {gpu.usagePercent}%
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-200">
+                      {gpu.name.includes('Intel')
+                        ? `${Math.round((systemInfo?.memory?.used || 0) / (1024 * 1024))} MB`
+                        : `${Math.round(gpu.vramUsedMb)} MB (${gpu.vramPercent}%)`}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-400">
+                      {gpu.name.includes('Intel')
+                        ? `${Math.round((systemInfo?.memory?.total || 0) / (1024 * 1024))} MB`
+                        : `${Math.round(gpu.vramTotalMb)} MB`}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-amber-300">
+                      {gpu.temperatureC > 0 ? `${gpu.temperatureC} °C` : '—'}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-cyan-300">
+                      {gpu.name.includes('Intel') ? 'Встроенная' : `${gpu.powerWatts} W`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -305,7 +299,9 @@ export const ResourceMonitorView: React.FC<ResourceMonitorViewProps> = ({
                 <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '11px' }} />
                 <Area type="monotone" dataKey="hostCpu" name="Хост CPU (%)" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} />
                 <Area type="monotone" dataKey="hostRam" name="Хост RAM (%)" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.2} strokeWidth={2} />
-                <Area type="monotone" dataKey="gpu0" name="GPU 0 (%)" stroke="#10b981" fill="#10b981" fillOpacity={0.2} strokeWidth={2} />
+                {gpus.length > 0 && (
+                  <Area type="monotone" dataKey="gpu0" name={`${gpus[0].name.includes('Intel') ? 'iGPU' : 'GPU'} 0 (%)`} stroke="#10b981" fill="#10b981" fillOpacity={0.2} strokeWidth={2} />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
