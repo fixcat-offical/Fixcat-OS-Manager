@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# При любой ошибке показываем строку и команду вместо тихого выхода
+trap 'rc=$?; echo -e "\033[0;31m[FAIL ] Ошибка на строке $LINENO: $BASH_COMMAND (код $rc)\033[0m" >&2' ERR
+
 REPO_URL="https://github.com/fixcat-offical/Fixcat-OS-Manager.git"
 INSTALL_DIR="/opt/fixcat-os-manager"
 DATA_DIR="/opt/fixcat-os-manager/data"
@@ -151,7 +154,7 @@ port_free() {
 # при «curl ... | bash» stdin занят телом самого скрипта.
 read_input() {
   local prompt="$1" out=""
-  if [[ -r /dev/tty ]]; then
+  if (exec 3<>/dev/tty) 2>/dev/null; then
     read -r -p "$prompt" out < /dev/tty || out=""
   elif [[ -t 0 ]]; then
     read -r -p "$prompt" out || out=""
@@ -195,9 +198,13 @@ pick_dir() {
   if [[ "$ASSUME_YES" == "1" ]]; then return; fi
   local d
   d="$(read_input "📁 Директория установки [${INSTALL_DIR}]: ")"
-  [[ -n "$d" ]] && { INSTALL_DIR="$d"; DATA_DIR="$d/data"; }
+  if [[ -n "$d" ]]; then
+    INSTALL_DIR="$d"; DATA_DIR="$d/data"
+  fi
   d="$(read_input "📁 Директория данных [${DATA_DIR}]: ")"
-  [[ -n "$d" ]] && DATA_DIR="$d"
+  if [[ -n "$d" ]]; then
+    DATA_DIR="$d"
+  fi
 }
 
 prompt_yn() {
