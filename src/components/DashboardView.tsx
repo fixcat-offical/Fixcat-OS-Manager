@@ -15,6 +15,8 @@ import {
   HardDrive,
   Info,
   Zap,
+  Clock,
+  Network,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,6 +29,23 @@ import {
 } from 'recharts';
 import { ContainerItem, SystemInfo, MetricHistoryPoint } from '../types';
 import { getOSIcon } from './icons/OSIcons';
+
+const formatUptime = (seconds: number) => {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}д ${hours}ч ${mins}м`;
+  if (hours > 0) return `${hours}ч ${mins}м`;
+  return `${mins}м`;
+};
+
+const formatBytes = (b: number) => {
+  if (b === 0) return '0 B';
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / 1048576).toFixed(1)} MB`;
+  return `${(b / 1073741824).toFixed(2)} GB`;
+};
 
 interface DashboardViewProps {
   containers: ContainerItem[];
@@ -200,6 +219,78 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="font-mono text-slate-300">
               {containers.filter((c) => c.osInfo?.noVncPort).length > 0 ? 'Готов к подключению' : 'Нет активных портов'}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Second row: host info cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+
+        {/* Up Time */}
+        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Аптайм хоста</span>
+            <div className="p-1.5 rounded-lg bg-violet-600/10 text-violet-400 border border-violet-500/20">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-mono text-white">
+              {systemInfo ? formatUptime(systemInfo.uptime) : '—'}
+            </div>
+            <span className="text-xs text-slate-400 font-mono">с последней загрузки</span>
+          </div>
+          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>Хост:</span>
+            <span className="font-mono font-medium text-slate-200">{systemInfo?.hostname || '—'}</span>
+          </div>
+        </div>
+
+        {/* Disk Usage */}
+        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Диск (корневой раздел)</span>
+            <div className="p-1.5 rounded-lg bg-emerald-600/10 text-emerald-400 border border-emerald-500/20">
+              <HardDrive className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-mono text-white">
+              {systemInfo?.disk ? `${systemInfo.disk.percent}%` : '—'}
+            </div>
+            <span className="text-xs text-slate-400 font-mono">
+              {systemInfo?.disk ? `${(systemInfo.disk.used / 1e9).toFixed(1)} / ${(systemInfo.disk.total / 1e9).toFixed(1)} GB` : '—'}
+            </span>
+          </div>
+          <div className="mt-2 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${systemInfo?.disk?.percent || 0}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Network RX/TX */}
+        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400">Сеть (суммарно)</span>
+            <div className="p-1.5 rounded-lg bg-amber-600/10 text-amber-400 border border-amber-500/20">
+              <Network className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-[11px] text-slate-500 font-mono">RX ⬇</p>
+              <p className="text-xl font-bold font-mono text-white">{formatBytes(systemInfo?.network?.rx || 0)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-500 font-mono">TX ⬆</p>
+              <p className="text-xl font-bold font-mono text-amber-300">{formatBytes(systemInfo?.network?.tx || 0)}</p>
+            </div>
+          </div>
+          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>Версия панели:</span>
+            <span className="font-mono font-medium text-slate-200">{systemInfo?.app?.version || '2.6.0'}</span>
           </div>
         </div>
       </div>

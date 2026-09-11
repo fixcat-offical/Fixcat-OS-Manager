@@ -62,6 +62,7 @@ export interface GpuInfo {
 }
 
 export interface SystemInfo {
+  app?: { name: string; version: string };
   hostname: string;
   platform: string;
   arch: string;
@@ -78,6 +79,8 @@ export interface SystemInfo {
     used: number;
     percent: number;
   };
+  disk?: { total: number; used: number; free: number; percent: number };
+  network?: { rx: number; tx: number };
   gpus?: GpuInfo[];
   loadAvg: number[];
   docker: {
