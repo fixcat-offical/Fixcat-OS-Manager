@@ -727,6 +727,21 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
   res.json({ success: true, message: 'Пароль успешно изменён' });
 });
 
+// Backup users database (admin only)
+app.get('/api/users/backup', requireAdmin, (req, res) => {
+  const users = getUsers();
+  const backup = {
+    app: 'Fixcat OS Manager',
+    version: appVersion,
+    exportedAt: new Date().toISOString(),
+    count: users.length,
+    users: users.map(({ passwordHash: _ph, ...u }) => ({ ...u })),
+  };
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="fixcat-users-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.send(JSON.stringify(backup, null, 2));
+});
+
 // --- INSTALLER & EXPORT KIT ENDPOINTS ---
 app.get('/api/installer/check-requirements', async (req, res) => {
   const gpus = await getGpuStats();
@@ -1430,6 +1445,74 @@ app.get('/api/containers/:id/logs', async (req, res) => {
   res.status(404).json({ logs: 'Логи контейнера недоступны.' });
 });
 
+// 4b. Rename Container
+app.post('/api/containers/:id/rename', async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body || {};
+  if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,63}$/.test(name)) {
+    return res.status(400).json({ error: 'Новое имя: 3-64 символа, буквы/цифры/точка/дефис/подчёркивание, первым символом буква или цифра' });
+  }
+  try {
+    const { statusCode, data } = await queryDockerSocket(`/containers/${id}/rename?name=${encodeURIComponent(name)}`, 'POST');
+    if (statusCode < 300) {
+      return res.json({ success: true, message: `Контейнер переименован в "${name}".` });
+    }
+    return res.status(statusCode).json({ error: data?.message || 'Не удалось переименовать контейнер.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Ошибка Docker сокета.' });
+  }
+});
+
+// 4c. Docker Version + Info (dashboard for diagnostics)
+app.get('/api/docker/info', async (req, res) => {
+  try {
+    const [verRes, infoRes] = await Promise.all([
+      queryDockerSocket('/version'),
+      queryDockerSocket('/info'),
+    ]);
+    if (verRes.statusCode === 200 && infoRes.statusCode === 200) {
+      const v = verRes.data || {};
+      const i = infoRes.data || {};
+      return res.json({
+        connected: true,
+        version: v.Version,
+        apiVersion: v.ApiVersion,
+        os: `${i.OperatingSystem} (${i.Architecture || i.Arch})`,
+        kernel: v.KernelVersion,
+        containers: {
+          total: i.Containers ?? 0,
+          running: i.ContainersRunning ?? 0,
+          paused: i.ContainersPaused ?? 0,
+          stopped: i.ContainersStopped ?? 0,
+        },
+        images: i.Images ?? 0,
+        dockerRootDir: i.DockerRootDir,
+        memoryTotalMb: i.MemTotal ? Math.round(i.MemTotal / 1048576) : null,
+        serverTime: i.ServerTime,
+      });
+    }
+    return res.status(400).json({ connected: false, error: 'Docker сокет недоступен' });
+  } catch (err: any) {
+    return res.status(400).json({ connected: false, error: err.message || 'Ошибка Docker сокета.' });
+  }
+});
+
+// 4d. API Health check
+app.get('/api/health', async (req, res) => {
+  const socketExists = fs.existsSync(appConfig.dockerSocketPath);
+  res.json({
+    status: 'ok',
+    app: appVersion,
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    docker: {
+      socketAvailable: socketExists,
+      socketPath: appConfig.dockerSocketPath,
+      mode: socketExists || appConfig.dockerTcpHost ? 'connected' : 'disconnected',
+    },
+  });
+});
+
 // 5b. Container Inspect (full Docker metadata)
 app.get('/api/containers/:id/inspect', async (req, res) => {
   const { id } = req.params;
@@ -1481,6 +1564,47 @@ app.get('/api/autostarts', async (req, res) => {
     return res.status(400).json({ error: `Docker недоступен: ${err.message}` });
   }
   return res.status(400).json({ error: 'Docker сокет недоступен', entries: [] });
+});
+
+// Bulk apply autostart policy to all (or filtered) containers
+app.post('/api/autostarts/bulk', async (req, res) => {
+  const { policy, state } = req.body || {};
+  if (!RESTART_POLICIES.includes(policy)) {
+    return res.status(400).json({ error: `Недопустимая политика: "${policy}".` });
+  }
+  try {
+    const { statusCode, data } = await queryDockerSocket('/containers/json?all=1');
+    if (statusCode !== 200 || !Array.isArray(data)) {
+      return res.status(400).json({ error: 'Docker сокет недоступен' });
+    }
+    let targets = data;
+    if (state === 'running') targets = data.filter((c: any) => c.State === 'running');
+    if (state === 'stopped') targets = data.filter((c: any) => c.State !== 'running');
+
+    let updated = 0;
+    let failed = 0;
+    for (const c of targets) {
+      try {
+        const r = await queryDockerSocket(`/containers/${c.Id}/update`, 'POST', {
+          RestartPolicy: { Name: policy, MaximumRetryCount: policy === 'on-failure' ? 5 : 0 },
+        });
+        if (r.statusCode < 300) updated++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    return res.json({
+      success: true,
+      updated,
+      failed,
+      total: targets.length,
+      policy,
+      message: `Политика "${policy}" применена к ${updated} контейнер(ам).${failed ? ` Ошибок: ${failed}.` : ''}`,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Ошибка Docker сокета.' });
+  }
 });
 
 app.post('/api/autostarts/:id', async (req, res) => {

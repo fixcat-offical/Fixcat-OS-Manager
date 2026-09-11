@@ -17,6 +17,7 @@ import {
   Link2,
   ArrowUpDown,
   Check,
+  Tag,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
 import { getOSIcon } from './icons/OSIcons';
@@ -54,6 +55,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   const [sortMode, setSortMode] = useState<SortMode>('name');
   const [sortAsc, setSortAsc] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [renamingContainer, setRenamingContainer] = useState<ContainerItem | null>(null);
 
   // Filtered containers
   const filteredContainers = containers
@@ -653,6 +655,14 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                         </button>
 
                         <button
+                          onClick={() => setRenamingContainer(container)}
+                          title="Переименовать контейнер"
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-amber-950/60 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
+                        >
+                          <Tag className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
                           onClick={() => onOpenLogs(container)}
                           title="Логи терминала"
                           className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -719,6 +729,93 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
           onClose={() => setInspectingContainer(null)}
         />
       )}
+
+      {/* Rename Modal */}
+      {renamingContainer && (
+        <RenameContainerModal
+          container={renamingContainer}
+          onClose={() => setRenamingContainer(null)}
+          onRenamed={() => {
+            setRenamingContainer(null);
+            onRefresh();
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+const RenameContainerModal: React.FC<{
+  container: ContainerItem;
+  onClose: () => void;
+  onRenamed: () => void;
+}> = ({ container, onClose, onRenamed }) => {
+  const currentName = (container.Names?.[0] || container.Id).replace('/', '');
+  const [name, setName] = useState(currentName);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleRename = async () => {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,63}$/.test(name)) {
+      setError('Имя: 3-64 символа, буквы/цифры/точка/дефис/подчёркивание, первым символом буква или цифра');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/containers/${container.Id}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onRenamed();
+      } else {
+        setError(data.error || 'Ошибка переименования');
+      }
+    } catch {
+      setError('Ошибка сети');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-fade-in">
+        <h3 className="text-base font-semibold text-slate-100 mb-1 flex items-center gap-2">
+          <Tag className="w-5 h-5 text-amber-400" />
+          Переименовать контейнер
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">Изменить имя контейнера</p>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">{error}</div>
+        )}
+
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => { setName(e.target.value); setError(''); }}
+          placeholder="Новое имя контейнера"
+          autoFocus
+          className="w-full px-3.5 py-2.5 mb-5 bg-slate-800 border border-slate-700/50 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500/40"
+        />
+
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+            Отмена
+          </button>
+          <button
+            onClick={handleRename}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/20 hover:bg-amber-500/30 transition disabled:opacity-50"
+          >
+            {loading ? 'Сохранение...' : 'Переименовать'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

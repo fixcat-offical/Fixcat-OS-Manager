@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Clock,
+  Loader2,
 } from 'lucide-react';
 import { getOSIcon } from './icons/OSIcons';
 
@@ -45,6 +46,7 @@ export const AutostartView: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingPolicy, setEditingPolicy] = useState('no');
   const [notice, setNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -116,6 +118,28 @@ export const AutostartView: React.FC = () => {
       await handleSetPolicy(entry.id, 'unless-stopped');
     } else {
       await handleSetPolicy(entry.id, 'no');
+    }
+  };
+
+  const handleBulk = async (policy: string) => {
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/autostarts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ policy }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotice(data.message || `Политика "${policy}" применена`);
+        await fetchEntries();
+      } else {
+        showNotice(data.error || 'Ошибка применения политики', 'error');
+      }
+    } catch {
+      showNotice('Ошибка подключения к Docker', 'error');
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -213,16 +237,49 @@ export const AutostartView: React.FC = () => {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Поиск по имени, образу или политике..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:border-cyan-500 focus:outline-none placeholder:text-slate-500"
-        />
+      {/* Search + bulk actions */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Поиск по имени, образу или политике..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:border-cyan-500 focus:outline-none placeholder:text-slate-500"
+          />
+        </div>
+        {entries.length > 0 && (
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs overflow-x-auto">
+            <button
+              onClick={() => handleBulk('always')}
+              className="px-2.5 py-1.5 rounded-lg font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition whitespace-nowrap cursor-pointer"
+              title="Включить автозапуск для всех контейнеров"
+            >
+              Вкл. все
+            </button>
+            <button
+              onClick={() => handleBulk('unless-stopped')}
+              className="px-2.5 py-1.5 rounded-lg font-medium bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 transition whitespace-nowrap cursor-pointer"
+              title="unless-stopped для всех"
+            >
+              unless-stopped
+            </button>
+            <button
+              onClick={() => handleBulk('no')}
+              className="px-2.5 py-1.5 rounded-lg font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 transition whitespace-nowrap cursor-pointer"
+              title="Отключить автозапуск для всех"
+            >
+              Выкл. все
+            </button>
+            {bulkBusy && (
+              <span className="flex items-center gap-1 pl-1 text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                применяю...
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Table */}

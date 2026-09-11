@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   Server,
@@ -11,8 +11,24 @@ import {
   Radio,
   RefreshCw,
   Zap,
+  Info,
+  Layers,
+  Cpu,
+  Activity,
 } from 'lucide-react';
 import { SystemInfo } from '../types';
+
+interface DockerInfo {
+  connected: boolean;
+  version?: string;
+  apiVersion?: string;
+  os?: string;
+  kernel?: string;
+  containers?: { total: number; running: number; paused: number; stopped: number };
+  images?: number;
+  dockerRootDir?: string;
+  memoryTotalMb?: number | null;
+}
 
 interface SettingsViewProps {
   systemInfo: SystemInfo | null;
@@ -30,6 +46,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [dockerTcp, setDockerTcp] = useState(systemInfo?.config?.dockerTcpHost || '');
   const [saved, setSaved] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [dockerInfo, setDockerInfo] = useState<DockerInfo | null>(null);
+
+  useEffect(() => {
+    fetch('/api/docker/info')
+      .then((r) => r.json())
+      .then(setDockerInfo)
+      .catch(() => setDockerInfo(null));
+  }, []);
 
   const isDockerActive = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
 
@@ -183,6 +207,74 @@ docker run -d \\
         <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
           {laptopRunCommand}
         </pre>
+      </div>
+
+      {/* Docker Engine Info */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-400" />
+            Информация о Docker Engine
+          </h3>
+          <button
+            onClick={() => fetch('/api/docker/info').then((r) => r.json()).then(setDockerInfo).catch(() => setDockerInfo(null))}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+            title="Обновить"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {!dockerInfo ? (
+          <p className="text-xs text-slate-500">
+            {dockerInfo === null ? 'Загрузка...' : 'Не удалось получить данные.'}
+          </p>
+        ) : !dockerInfo.connected ? (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
+            <Info className="w-4 h-4 shrink-0" />
+            Docker Engine недоступен — подключите сокет или TCP Host.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Server className="w-3 h-3" /> Версия</p>
+              <p className="font-mono text-sm text-slate-200">{dockerInfo.version || '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-3 h-3" /> API</p>
+              <p className="font-mono text-sm text-slate-200">{dockerInfo.apiVersion || '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> ОС / Архитектура</p>
+              <p className="font-mono text-xs text-slate-200 truncate" title={dockerInfo.os}>{dockerInfo.os || '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-3 h-3" /> Ядро</p>
+              <p className="font-mono text-xs text-slate-200 truncate">{dockerInfo.kernel || '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Activity className="w-3 h-3" /> Контейнеры</p>
+              <p className="font-mono text-sm text-slate-200">
+                {dockerInfo.containers ? `${dockerInfo.containers.running}/${dockerInfo.containers.total}` : '—'}
+                <span className="text-[10px] text-slate-500"> (запущено/всего)</span>
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Layers className="w-3 h-3" /> Образов</p>
+              <p className="font-mono text-sm text-slate-200">{dockerInfo.images ?? '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><HardDrive className="w-3 h-3" /> Docker Root</p>
+              <p className="font-mono text-xs text-slate-200 truncate" title={dockerInfo.dockerRootDir}>{dockerInfo.dockerRootDir || '—'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <p className="text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Zap className="w-3 h-3" /> RAM хоста</p>
+              <p className="font-mono text-sm text-slate-200">
+                {dockerInfo.memoryTotalMb ? `${(dockerInfo.memoryTotalMb / 1024).toFixed(1)} GB` : '—'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

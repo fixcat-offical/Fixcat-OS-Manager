@@ -17,6 +17,7 @@ import {
   EyeOff,
   AlertTriangle,
   Info,
+  Download,
 } from 'lucide-react';
 import { UserRecord } from '../types';
 
@@ -94,6 +95,31 @@ export const UsersView: React.FC<UsersViewProps> = ({
     return data;
   };
 
+  const handleBackup = async () => {
+    try {
+      const res = await fetch('/api/users/backup', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast?.(data.error || 'Ошибка создания бэкапа', 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fixcat-users-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast?.('Бэкап пользователей скачан', 'success');
+    } catch {
+      showToast?.('Ошибка сети', 'error');
+    }
+  };
+
   const toggleStatus = async (u: UserRecord) => {
     const newStatus = (u.status || 'active') === 'active' ? 'disabled' : 'active';
     try {
@@ -142,12 +168,20 @@ export const UsersView: React.FC<UsersViewProps> = ({
             <p className="text-xs text-slate-500">Учётные записи, роли и доступ к панели</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 transition-all"
-        >
-          <UserPlus className="w-4 h-4" /> Создать пользователя
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleBackup}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors"
+          >
+            <Download className="w-4 h-4" /> Бэкап
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 transition-all"
+          >
+            <UserPlus className="w-4 h-4" /> Создать пользователя
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
