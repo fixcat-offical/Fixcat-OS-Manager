@@ -168,7 +168,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
         </form>
 
         <div className="mt-8 pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500">
-          Fixcat OS Manager v2.5 &bull; Локальная авторизация
+          Fixcat OS Manager v2.6 &bull; Локальная авторизация
         </div>
       </div>
     </div>

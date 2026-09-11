@@ -1167,6 +1167,9 @@ detect_os() {
   fi
 }
 OS_ID="$(detect_os)"
+# Arch-подобные (manjaro, endeavour, garuda...) опознаём по наличию pacman
+IS_PACMAN=0
+command -v pacman >/dev/null 2>&1 && IS_PACMAN=1
 
 banner() {
   echo
@@ -1176,7 +1179,7 @@ banner() {
   echo "   ██╔══╝  ██║ ██╔██╗ ██║     ██╔══██║   ██║   "
   echo "   ██║     ██║██╔╝ ██╗╚██████╗██║  ██║   ██║   "
   echo "   ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   "
-  echo "      OS Manager — интерактивный установщик v2.5"
+  echo "      OS Manager — интерактивный установщик v2.6"
   echo
 }
 
@@ -1199,6 +1202,18 @@ port_free() {
   return $busy
 }
 
+# Ответы читаем с терминала /dev/tty, а не из stdin:
+# при «curl ... | bash» stdin занят телом самого скрипта.
+read_input() {
+  local prompt="$1" out=""
+  if [[ -r /dev/tty ]]; then
+    read -r -p "$prompt" out < /dev/tty || out=""
+  elif [[ -t 0 ]]; then
+    read -r -p "$prompt" out || out=""
+  fi
+  printf '%s\n' "$out"
+}
+
 pick_port() {
   if [[ "$ASSUME_YES" == "1" ]]; then
     if ! port_free "$PORT"; then
@@ -1210,7 +1225,7 @@ pick_port() {
   fi
   while true; do
     local want
-    read -r -p "🔌 Введите порт веб-панели [сейчас: $PORT, пусто=оставить]: " want
+    want="$(read_input "🔌 Введите порт веб-панели [сейчас: $PORT, пусто=оставить]: ")"
     [[ -n "$want" ]] && PORT="$want"
     # валидация: только число, 1024-65535
     if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1024 || PORT > 65535 )); then
@@ -1223,7 +1238,7 @@ pick_port() {
     for p in $(seq $((PORT+1)) 60100); do
       if port_free "$p"; then
         info "Свободный порт: $p"
-        read -r -p "Использовать $p? [Y/n]: " use
+        use="$(read_input "Использовать $p? [Y/n]: ")"
         [[ "\${use,,}" != "n" ]] && { PORT="$p"; ok "Выбран порт $PORT."; return; }
         break
       fi
@@ -1234,9 +1249,9 @@ pick_port() {
 pick_dir() {
   if [[ "$ASSUME_YES" == "1" ]]; then return; fi
   local d
-  read -r -p "📁 Директория установки [\${INSTALL_DIR}]: " d
+  d="$(read_input "📁 Директория установки [\${INSTALL_DIR}]: ")"
   [[ -n "$d" ]] && { INSTALL_DIR="$d"; DATA_DIR="$d/data"; }
-  read -r -p "📁 Директория данных [\${DATA_DIR}]: " d
+  d="$(read_input "📁 Директория данных [\${DATA_DIR}]: ")"
   [[ -n "$d" ]] && DATA_DIR="$d"
 }
 
@@ -1246,7 +1261,7 @@ prompt_yn() {
     [[ "$default" == "1" ]] && return 0 || return 1
   fi
   while true; do
-    read -r -p "❓ $label [Y/n]: " a
+    a="$(read_input "❓ $label [Y/n]: ")"
     [[ -z "$a" ]] && a="$default"
     case "\${a,,}" in y|yes) return 0 ;; n|no) return 1 ;; *) ;; esac
   done
@@ -1254,7 +1269,7 @@ prompt_yn() {
 
 # =============================================================================
 banner
-step "1/10 — Конфигурация установки"
+step "1/9 — Конфигурация установки"
 echo "  ОС:        \${OS_ID:-unknown} / $(uname -m)"
 echo "  Node.js:   $(node --version 2>/dev/null || echo 'не установлен')"
 echo "  Docker:    $(command -v docker >/dev/null && echo 'установлен' || echo 'не установлен')"
@@ -1268,7 +1283,7 @@ echo "  · Директория:       $INSTALL_DIR"
 echo "  · Данные:           $DATA_DIR"
 echo
 
-step "2/10 — Системные зависимости"
+step "2/9 — Системные зависимости"
 case "$OS_ID" in
   ubuntu|debian|kali|linuxmint)
     DEPS="curl git ca-certificates gnupg lsb-release unzip xz-utils build-essential"
@@ -1277,24 +1292,33 @@ case "$OS_ID" in
   centos|rhel|rocky|almalinux|fedora)
     DEPS="curl git ca-certificates gnupg unzip xz"
     exec_cmd dnf install -y $DEPS 2>/dev/null || yum install -y $DEPS 2>/dev/null || warn "Часть зависимостей не установилась." ;;
-  arch)
+  arch|manjaro|archlinux|endeavouros|garuda|chakra|cachyos)
     exec_cmd pacman -Sy --noconfirm curl git base-devel 2>/dev/null || true ;;
-  *) warn "ОС \${OS_ID} не распознана — ставлю зависимости вручную." ;;
+  *)
+    if [[ "$IS_PACMAN" == "1" ]]; then
+      exec_cmd pacman -Sy --noconfirm curl git base-devel 2>/dev/null || true
+    else
+      warn "ОС \${OS_ID} не распознана — ставлю зависимости вручную."
+    fi ;;
 esac
 ok "Базовые компоненты готовы."
 
-step "3/10 — Docker Engine"
+step "3/9 — Docker Engine"
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   ok "Docker уже активен."
 elif [[ "$INSTALL_DOCKER" == "0" ]]; then
   warn "Установка Docker пропущена (флаг --no-docker)."
+elif [[ "$IS_PACMAN" == "1" ]]; then
+  exec_cmd pacman -Sy --noconfirm docker
+  exec_cmd systemctl enable --now docker >/dev/null 2>&1 || exec_cmd service docker start >/dev/null 2>&1 || true
+  ok "Docker Engine установлен (pacman)."
 else
-  exec_cmd curl -fsSL https://get.docker.com | sh
+  exec_cmd bash -c 'curl -fsSL https://get.docker.com | sh'
   exec_cmd systemctl enable --now docker >/dev/null 2>&1 || exec_cmd service docker start >/dev/null 2>&1 || true
   ok "Docker Engine установлен."
 fi
 
-step "4/10 — Node.js LTS"
+step "4/9 — Node.js LTS"
 NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v//;s/\\..*//')
 if [[ -n "$NODE_MAJOR" && "$NODE_MAJOR" -ge 18 ]]; then
   ok "Node.js v$NODE_MAJOR уже установлен."
@@ -1303,17 +1327,19 @@ elif [[ "$INSTALL_NODE" == "0" ]]; then
 else
   case "$OS_ID" in
     ubuntu|debian|kali|linuxmint)
-      exec_cmd curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      exec_cmd bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
       exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs ;;
     centos|rhel|rocky|almalinux|fedora)
-      exec_cmd curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+      exec_cmd bash -c 'curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -'
       exec_cmd dnf install -y nodejs ;;
+    arch|manjaro|archlinux|endeavouros|garuda|chakra|cachyos)
+      exec_cmd pacman -Sy --noconfirm nodejs npm ;;
     *) warn "Нет автоматической установки Node для $OS_ID — установите Node.js 18+ вручную." ;;
   esac
   ok "Node.js v$(node --version | sed 's/v//') установлен."
 fi
 
-step "5/10 — NVIDIA Container Toolkit (GPU)"
+step "5/9 — NVIDIA Container Toolkit (GPU)"
 if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi -L >/dev/null 2>&1; then
   warn "NVIDIA GPU не обнаружен — пропуск."
 elif command -v nvidia-ctk >/dev/null 2>&1; then
@@ -1321,15 +1347,19 @@ elif command -v nvidia-ctk >/dev/null 2>&1; then
 elif [[ "$INSTALL_NVIDIA" == "0" ]]; then
   warn "Пропущено (флаг --no-nvidia)."
 else
-  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null || true
-  curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list 2>/dev/null || true
-  exec_cmd apt-get update -y
-  exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-container-toolkit 2>/dev/null || warn "Ручная установка toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+  if [[ "$IS_PACMAN" == "1" ]]; then
+    exec_cmd pacman -Sy --noconfirm nvidia-container-toolkit 2>/dev/null || warn "Ручная установка toolkit: https://github.com/NVIDIA/nvidia-container-toolkit (или: pacman -S nvidia-container-toolkit)"
+  else
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null || true
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list 2>/dev/null || true
+    exec_cmd apt-get update -y
+    exec_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-container-toolkit 2>/dev/null || warn "Ручная установка toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+  fi
   exec_cmd nvidia-ctk runtime configure --runtime=docker 2>/dev/null || true
   ok "NVIDIA Container Toolkit настроен."
 fi
 
-step "6/10 — Модули панели (образы ОС)"
+step "6/9 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
   IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
   for img in "\${IMAGES[@]}"; do
@@ -1345,7 +1375,7 @@ else
   warn "Загрузка образов пропущена или Docker недоступен."
 fi
 
-step "7/10 — Сборка панели"
+step "7/9 — Сборка панели"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
 cd "$INSTALL_DIR"
 if [[ "$DRY_RUN" != "1" ]]; then
@@ -1376,7 +1406,7 @@ else
   info "[DRY-RUN] git clone / npm run build / .env — без изменений."
 fi
 
-step "8/10 — Служба systemd"
+step "8/9 — Служба systemd"
 if [[ -d /run/systemd/system ]]; then
   cat > /etc/systemd/system/fixcat.service <<EOF
 [Unit]
@@ -1407,7 +1437,7 @@ else
   warn "systemd не найден — запустите вручную: cd $INSTALL_DIR && NODE_ENV=production node dist/server.js"
 fi
 
-step "9/10 — Готово"
+step "9/9 — Готово"
 LOCAL_IPS=($(hostname -I 2>/dev/null))
 PUBLIC_IP=""
 PUBLIC_IP=$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || curl -fsS --max-time 4 https://ifconfig.me 2>/dev/null || echo "")
