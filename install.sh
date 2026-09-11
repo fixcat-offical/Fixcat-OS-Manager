@@ -59,6 +59,38 @@ exec_cmd() {
   "$@"
 }
 
+# Псевдо-прогрессбар для долгих шагов (npm ci / сборка): показывает заполняющийся
+# бар и прошедшее время, а по завершении — итог. Реальные команды идут в логфайл.
+run_with_progress() {
+  local label="$1"; shift
+  if [[ "$DRY_RUN" == "1" ]]; then
+    info "[DRY-RUN] $label: $*"
+    return 0
+  fi
+  local logf="/tmp/fixcat-progress.log" pid start_sec sec i bar filler rc
+  info "$label..."
+  "$@" >"$logf" 2>&1 &
+  pid=$!; start_sec=$SECONDS
+  while kill -0 "$pid" 2>/dev/null; do
+    sec=$((SECONDS-start_sec))
+    bar=""; filler=""
+    for ((i=0; i<sec*2%20; i++)); do bar+='#'; done
+    for ((i=sec*2%20; i<20; i++)); do filler+='.'; done
+    printf "\033[K   \033[0;33m[%s%s]\033[0m %ss " "$bar" "$filler" "$sec"
+    sleep 0.25
+  done
+  rc=0; wait "$pid" 2>/dev/null && rc=0 || rc=$?
+  sec=$((SECONDS-start_sec))
+  if [[ $rc -eq 0 ]]; then
+    printf "\033[K   \033[0;32m[####################]\033[0m %ss — готово\n" "$sec"
+    ok "$label."
+  else
+    printf "\033[K   \033[0;31m[ошибка %s]\033[0m %ss\n" "$rc" "$sec"
+    tail -n 20 "$logf" | sed 's/^/       /'
+  fi
+  return $rc
+}
+
 # ---------- права root ----------
 if [[ "$EUID" -ne 0 ]]; then
   fail "Скрипт должен запускаться от root. Используйте: sudo bash install.sh"
@@ -257,10 +289,9 @@ if [[ "$DRY_RUN" != "1" ]]; then
     info "Клонирую Fixcat OS Manager..."
     git clone "$REPO_URL" . 2>/dev/null || { git init -q; git remote add origin "$REPO_URL"; git fetch -q origin; git checkout -q origin/main; }
   fi
-  info "Зависимости (npm ci)..."
-  npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
-  info "Продакшн-сборка..."
-  npm run build
+  info "Зависимости (npm ci, кэширующе)..."
+  run_with_progress "npm ci (зависимости, ~1-3 мин на слабой сети)"     npm ci --no-audit --no-fund --loglevel=error --prefer-offline     --fetch-retries=3 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=5000   || run_with_progress "npm install (запасной)"     npm install --no-audit --no-fund --loglevel=error --prefer-offline     --fetch-retries=3 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=5000
+  run_with_progress "Продакшн-сборка (vite + esbuild)" npm run build
   cat > .env <<EOF
 # Fixcat OS Manager
 PORT=$PORT

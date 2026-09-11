@@ -30,6 +30,33 @@ warn()  { echo -e "${COLOR_YELLOW}[WARN ]${COLOR_RESET} $*"; }
 fail()  { echo -e "${COLOR_RED}[FAIL ]${COLOR_RESET} $*"; }
 step()  { echo; echo -e "${COLOR_CYAN}════════════════════════════════════════════════════════════${COLOR_RESET}"; echo -e "${COLOR_CYAN}  $*${COLOR_RESET}"; echo -e "${COLOR_CYAN}════════════════════════════════════════════════════════════${COLOR_RESET}"; }
 
+# Псевдо-прогрессбар для долгих шагов (npm install / сборка).
+run_with_progress() {
+  local label="$1"; shift
+  local logf="/tmp/fixcat-progress.log" pid start_sec sec i bar filler rc
+  info "$label..."
+  "$@" >"$logf" 2>&1 &
+  pid=$!; start_sec=$SECONDS
+  while kill -0 "$pid" 2>/dev/null; do
+    sec=$((SECONDS-start_sec))
+    bar=""; filler=""
+    for ((i=0; i<sec*2%20; i++)); do bar+='#'; done
+    for ((i=sec*2%20; i<20; i++)); do filler+='.'; done
+    printf "\r\033[K   \033[0;33m[%s%s]\033[0m %ss " "$bar" "$filler" "$sec"
+    sleep 0.25
+  done
+  rc=0; wait "$pid" 2>/dev/null && rc=0 || rc=$?
+  sec=$((SECONDS-start_sec))
+  if [[ $rc -eq 0 ]]; then
+    printf "\r\033[K   \033[0;32m[####################]\033[0m %ss — готово\n" "$sec"
+    ok "$label."
+  else
+    printf "\r\033[K   \033[0;31m[ошибка %s]\033[0m %ss\n" "$rc" "$sec"
+    tail -n 20 "$logf" | sed 's/^/       /'
+  fi
+  return $rc
+}
+
 # ---------- проверки ----------
 if [[ "$EUID" -ne 0 ]]; then
   fail "Скрипт должен запускаться от root. Используйте: sudo bash update.sh"
@@ -65,10 +92,12 @@ fi
 
 step "2/3 — Зависимости и продакшн-сборка"
 info "node: $(node --version 2>/dev/null || echo 'нет') · npm: $(npm --version 2>/dev/null || echo 'нет')"
-info "Установка зависимостей (npm ci)..."
-npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
-info "Продакшн-сборка (vite + esbuild)..."
-npm run build
+info "Обновление зависимостей (инкрементально, кэш npm)..."
+# node_modules уже есть — npm install быстрее npm ci, не переустанавливает всё заново
+run_with_progress "npm install (ускоренно)" \
+  npm install --no-audit --no-fund --loglevel=error --prefer-offline \
+  --fetch-retries=3 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=5000
+run_with_progress "Продакшн-сборка (vite + esbuild)" npm run build --if-present
 ok "Сборка завершена."
 
 NEW_VERSION="$(grep -m1 '"version"' "$INSTALL_DIR/package.json" 2>/dev/null | sed 's/[^0-9.]*//g' || echo '?')"
