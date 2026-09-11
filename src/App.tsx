@@ -17,7 +17,7 @@ import { UsersView } from './components/UsersView';
 import { HardwareView } from './components/HardwareView';
 import { NodesView } from './components/NodesView';
 import { AuthView } from './components/AuthView';
-import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
+import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus, NodeItem } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 export default function App() {
@@ -25,6 +25,10 @@ export default function App() {
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [history, setHistory] = useState<MetricHistoryPoint[]>([]);
+  const [nodes, setNodes] = useState<NodeItem[]>([]);
+  const [activeNodeId, setActiveNodeId] = useState<string>(
+    () => localStorage.getItem('fixcat_active_node') || 'local'
+  );
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -53,6 +57,38 @@ export default function App() {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 3500);
   };
+
+  // Device-aware fetch: routes any /api/* call to the active node through the
+  // master's proxy when a connected node is selected ("local" = this panel).
+  const api = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (activeNodeId === 'local') {
+        return fetch(input, init);
+      }
+      const path = typeof input === 'string' ? input : String(input);
+      let body: any;
+      if (init?.body) {
+        try {
+          body = JSON.parse(String(init.body));
+        } catch {
+          body = undefined;
+        }
+      }
+      return fetch(`/api/nodes/${activeNodeId}/proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          path,
+          method: init?.method || 'GET',
+          body,
+        }),
+      });
+    },
+    [activeNodeId, authToken]
+  );
 
   // Check Auth Status on Mount
   const checkAuthStatus = useCallback(async () => {
@@ -138,28 +174,54 @@ export default function App() {
   // Fetch data
   const fetchData = useCallback(async () => {
     if (!authStatus.isAuthenticated) return;
-
     setIsRefreshing(true);
+    const isRemote = activeNodeId && activeNodeId !== 'local';
     try {
-      const [contRes, sysRes, histRes] = await Promise.all([
-        fetch('/api/containers'),
-        fetch('/api/system'),
-        fetch('/api/stats/history'),
-      ]);
-
-      if (contRes.ok) {
-        const cData = await contRes.json();
-        setContainers(cData.containers || []);
+      // Always fetch the master's system info so we always have the live node list.
+      // When remote is active, this is the ONLY call that goes directly to this panel;
+      // everything else goes through the api() proxy.
+      const localSysRes = await fetch('/api/system');
+      let localSystem: any = null;
+      if (localSysRes.ok) {
+        localSystem = await localSysRes.json();
+        setNodes(localSystem.nodes || []);
+        if (!isRemote) setSystemInfo(localSystem);
       }
 
-      if (sysRes.ok) {
-        const sData = await sysRes.json();
-        setSystemInfo(sData);
-      }
-
-      if (histRes.ok) {
-        const hData = await histRes.json();
-        setHistory(hData.history || []);
+      if (isRemote) {
+        const [contRes, sysRes, histRes] = await Promise.all([
+          api('/api/containers'),
+          api('/api/system'),
+          api('/api/stats/history'),
+        ]);
+        if (contRes.ok) {
+          const cData = await contRes.json();
+          setContainers(cData.containers || []);
+        }
+        if (sysRes.ok) {
+          const sData = await sysRes.json();
+          // Merge master's nodes into the remote system so views still see
+          // the full network topology.
+          sData.nodes = localSystem?.nodes || [];
+          setSystemInfo(sData);
+        }
+        if (histRes.ok) {
+          const hData = await histRes.json();
+          setHistory(hData.history || []);
+        }
+      } else {
+        const [contRes, histRes] = await Promise.all([
+          fetch('/api/containers'),
+          fetch('/api/stats/history'),
+        ]);
+        if (contRes.ok) {
+          const cData = await contRes.json();
+          setContainers(cData.containers || []);
+        }
+        if (histRes.ok) {
+          const hData = await histRes.json();
+          setHistory(hData.history || []);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -167,7 +229,14 @@ export default function App() {
       setIsRefreshing(false);
       setLastUpdated(new Date());
     }
-  }, [authStatus.isAuthenticated]);
+  }, [authStatus.isAuthenticated, api, activeNodeId]);
+
+  // Switch active device; refetch happens automatically because fetchData
+  // depends on activeNodeId through the api() helper.
+  const handleChangeNode = useCallback((id: string) => {
+    setActiveNodeId(id);
+    localStorage.setItem('fixcat_active_node', id);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -185,7 +254,7 @@ export default function App() {
   // Action handler (Start/Stop/Restart/Remove/Pause/Unpause)
   const handleContainerAction = async (id: string, action: string) => {
     try {
-      const res = await fetch(`/api/containers/${id}/action`, {
+      const res = await api(`/api/containers/${id}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
@@ -267,6 +336,7 @@ export default function App() {
 
   const runningCount = containers.filter((c) => c.State === 'running').length;
   const isDockerConnected = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
+  const activeNode = activeNodeId && activeNodeId !== 'local' ? nodes.find((n) => n.id === activeNodeId) || null : null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none">
@@ -297,6 +367,9 @@ export default function App() {
           username={authStatus.username}
           role={authStatus.role || null}
           lastUpdated={lastUpdated}
+          nodes={nodes}
+          activeNodeId={activeNodeId}
+          onChangeNode={handleChangeNode}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">
@@ -310,6 +383,8 @@ export default function App() {
               onContainerAction={handleContainerAction}
               onNavigateTab={(tab) => setCurrentTab(tab)}
               onOpenDeploy={() => setIsDeployModalOpen(true)}
+              api={api}
+              nodes={nodes}
             />
           )}
 
@@ -322,6 +397,8 @@ export default function App() {
               onOpenDeploy={() => setIsDeployModalOpen(true)}
               onRefresh={fetchData}
               isRefreshing={isRefreshing}
+              api={api}
+              remoteIp={activeNode?.ip || null}
             />
           )}
 
@@ -348,7 +425,7 @@ export default function App() {
           )}
 
           {currentTab === 'autostart' && (
-            <AutostartView />
+            <AutostartView api={api} />
           )}
 
           {currentTab === 'users' && (
@@ -377,6 +454,7 @@ export default function App() {
             <SettingsView
               systemInfo={systemInfo}
               authToken={authToken}
+              api={api}
             />
           )}
 
@@ -384,7 +462,7 @@ export default function App() {
             <HardwareView
               authToken={authToken}
               showToast={showToast}
-              nodes={systemInfo?.nodes || []}
+              nodes={nodes}
             />
           )}
         </main>
@@ -402,6 +480,7 @@ export default function App() {
         <LogsModal
           container={activeLogsModal}
           onClose={() => setActiveLogsModal(null)}
+          api={api}
         />
       )}
 
@@ -409,7 +488,10 @@ export default function App() {
         <DeployModal
           onClose={() => setIsDeployModalOpen(false)}
           onDeploy={handleDeployContainer}
-          nodes={systemInfo?.nodes || []}
+          nodes={nodes}
+          api={api}
+          defaultNode={activeNodeId !== 'local' ? activeNodeId : undefined}
+          authToken={authToken}
         />
       )}
 

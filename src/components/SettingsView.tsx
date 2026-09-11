@@ -57,6 +57,7 @@ interface DockerInfo {
 interface SettingsViewProps {
   systemInfo: SystemInfo | null;
   authToken?: string | null;
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const SETTING_GROUPS: { label: string; icon: any; keys: string[] }[] = [
@@ -123,7 +124,9 @@ const SETTING_LABELS: Record<string, { name: string; desc: string; type: string;
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemInfo,
   authToken,
+  api,
 }) => {
+  const run = api || fetch;
   const [hostIp, setHostIp] = useState(systemInfo?.config?.hostIp || 'localhost');
   const [dockerSocket, setDockerSocket] = useState(systemInfo?.config?.dockerSocketPath || '/var/run/docker.sock');
   const [dockerTcp, setDockerTcp] = useState(systemInfo?.config?.dockerTcpHost || '');
@@ -142,14 +145,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
   const fetchDockerInfo = () => {
-    fetch('/api/docker/info')
+    run('/api/docker/info')
       .then((r) => r.json())
       .then(setDockerInfo)
       .catch(() => setDockerInfo(null));
   };
 
   const fetchUpdateStatus = () => {
-    fetch('/api/update/status', { headers: authHeader })
+    run('/api/update/status', { headers: authHeader })
       .then((r) => r.json())
       .then(setUpdateStatus)
       .catch(() => {});
@@ -157,15 +160,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   useEffect(() => {
     fetchDockerInfo();
-    fetch('/api/images').then((r) => r.json()).then((d) => setImages(d.images || [])).catch(() => setImages(null));
+    run('/api/images').then((r) => r.json()).then((d) => setImages(d.images || [])).catch(() => setImages(null));
     fetchUpdateStatus();
-  }, []);
+  }, [api]);
 
   const isDockerActive = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
 
   const handleSaveConnection = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/config', {
+    await run('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader },
       body: JSON.stringify({ hostIp, dockerSocketPath: dockerSocket, dockerTcpHost: dockerTcp }),
@@ -177,7 +180,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const saveSetting = async (key: string, value: any) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
     try {
-      await fetch('/api/config', {
+      await run('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({ [key]: value }),
@@ -189,7 +192,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleDownloadConfigBackup = async () => {
     try {
-      const res = await fetch('/api/config/backup');
+      const res = await run('/api/config/backup');
       if (!res.ok) throw new Error('Backup fetch failed');
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -215,7 +218,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       try {
         const raw = JSON.parse(reader.result as string);
         const cfg = raw.config || raw;
-        const res = await fetch('/api/config/restore', {
+        const res = await run('/api/config/restore', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeader },
           body: JSON.stringify({ config: cfg }),
@@ -239,7 +242,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const runUpdate = async (endpoint: string) => {
     setUpdateLoading(true);
     try {
-      const res = await fetch(endpoint, { method: 'POST', headers: authHeader });
+      const res = await run(endpoint, { method: 'POST', headers: authHeader });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       showToast(data.message || 'Обновление запущено', 'success');
@@ -354,7 +357,7 @@ docker run -d \\
               onClick={async () => {
                 if (!window.confirm('Перегенерировать API ключ? Все подключённые узлы потеряют доступ, пока не обновите ключ на них.')) return;
                 try {
-                  const res = await fetch('/api/config/api-key', {
+                  const res = await run('/api/config/api-key', {
                     method: 'POST',
                     headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
                   });

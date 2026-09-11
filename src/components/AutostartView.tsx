@@ -38,7 +38,11 @@ const POLICY_COLORS: Record<string, string> = {
   'on-failure': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
 };
 
-export const AutostartView: React.FC = () => {
+interface AutostartViewProps {
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
+export const AutostartView: React.FC<AutostartViewProps> = ({ api }) => {
   const [entries, setEntries] = useState<AutostartEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +56,7 @@ export const AutostartView: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/autostarts');
+      const res = await (api || fetch)('/api/autostarts');
       if (res.ok) {
         const data = await res.json();
         setEntries(data.entries || []);
@@ -67,7 +71,7 @@ export const AutostartView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     fetchEntries();
@@ -80,7 +84,7 @@ export const AutostartView: React.FC = () => {
 
   const handleSetPolicy = async (id: string, policy: string) => {
     try {
-      const res = await fetch(`/api/autostarts/${id}`, {
+      const res = await (api || fetch)(`/api/autostarts/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ policy }),
@@ -100,7 +104,7 @@ export const AutostartView: React.FC = () => {
 
   const handleRemove = async (id: string) => {
     try {
-      const res = await fetch(`/api/autostarts/${id}`, { method: 'DELETE' });
+      const res = await (api || fetch)(`/api/autostarts/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (res.ok) {
         showNotice(data.message || 'Автозапуск удалён');
@@ -124,7 +128,7 @@ export const AutostartView: React.FC = () => {
   const handleBulk = async (policy: string) => {
     setBulkBusy(true);
     try {
-      const res = await fetch('/api/autostarts/bulk', {
+      const res = await (api || fetch)('/api/autostarts/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ policy }),

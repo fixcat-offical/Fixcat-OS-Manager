@@ -12,9 +12,10 @@ import { ContainerItem } from '../types';
 interface LogsModalProps {
   container: ContainerItem | null;
   onClose: () => void;
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
-export const LogsModal: React.FC<LogsModalProps> = ({ container, onClose }) => {
+export const LogsModal: React.FC<LogsModalProps> = ({ container, onClose, api }) => {
   if (!container) return null;
 
   const [logs, setLogs] = useState<string>('Загрузка логов контейнера...');
@@ -24,7 +25,7 @@ export const LogsModal: React.FC<LogsModalProps> = ({ container, onClose }) => {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/containers/${container.Id}/logs`);
+      const res = await (api || fetch)(`/api/containers/${container.Id}/logs`);
       const data = await res.json();
       setLogs(data.logs || 'Логи отсутствуют.');
     } catch {

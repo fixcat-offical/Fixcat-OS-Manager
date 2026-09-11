@@ -33,7 +33,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { ContainerItem, SystemInfo, MetricHistoryPoint } from '../types';
+import { ContainerItem, SystemInfo, MetricHistoryPoint, NodeItem } from '../types';
 import { getOSIcon } from './icons/OSIcons';
 
 interface EventEntry {
@@ -88,6 +88,8 @@ interface DashboardViewProps {
   onContainerAction: (id: string, action: string) => void;
   onNavigateTab: (tab: string) => void;
   onOpenDeploy: () => void;
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  nodes?: NodeItem[];
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -99,16 +101,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onContainerAction,
   onNavigateTab,
   onOpenDeploy,
+  api,
+  nodes,
 }) => {
   const runningContainers = containers.filter((c) => c.State === 'running');
   const pausedContainers = containers.filter((c) => c.State === 'paused');
+  const nodeList = nodes || systemInfo?.nodes || [];
 
   const [events, setEvents] = useState<EventEntry[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const loadEvents = () => {
-      fetch('/api/events')
+      (api || fetch)('/api/events')
         .then((r) => r.json())
         .then((d) => {
           if (!cancelled) setEvents(d.events || []);
@@ -121,7 +126,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       cancelled = true;
       clearInterval(iv);
     };
-  }, []);
+  }, [api]);
 
   // Resource calculations
   const totalRamUsedByOsBytes = runningContainers.reduce((acc, c) => acc + (c.stats?.memoryUsage || 0), 0);
@@ -747,17 +752,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Connected Remote Nodes */}
-      {systemInfo?.nodes && systemInfo.nodes.length > 0 && (
+      {nodeList && nodeList.length > 0 && (
         <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Network className="w-4 h-4 text-indigo-400" />
               Подключённые узлы
             </h3>
-            <span className="text-[11px] text-slate-500">{systemInfo.nodes.filter((n) => n.status?.online).length}/{systemInfo.nodes.length} онлайн</span>
+            <span className="text-[11px] text-slate-500">{nodeList.filter((n) => n.status?.online).length}/{nodeList.length} онлайн</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {systemInfo.nodes.map((node) => {
+            {nodeList.map((node) => {
               const online = !!node.status?.online;
               const sys = node.status?.system;
               const memMb = sys?.memory ? Math.round(sys.memory.used / 1048576) : null;

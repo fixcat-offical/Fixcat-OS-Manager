@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Plus,
@@ -36,9 +36,12 @@ interface DeployModalProps {
   onClose: () => void;
   onDeploy: (config: any) => Promise<boolean | void>;
   nodes?: NodeItem[];
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  defaultNode?: string;
+  authToken?: string | null;
 }
 
-export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nodes }) => {
+export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nodes, defaultNode, authToken }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('ubuntu');
   const [containerName, setContainerName] = useState(`ubuntu-desktop-${Math.floor(Math.random() * 89 + 10)}`);
   const [vncPort, setVncPort] = useState('6082');
@@ -46,7 +49,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const [cpuCores, setCpuCores] = useState('2');
   const [resolution, setResolution] = useState('1920x1080');
   const [restartPolicy, setRestartPolicy] = useState('no');
-  const [targetNode, setTargetNode] = useState('local');
+  const [targetNode, setTargetNode] = useState(defaultNode || 'local');
 
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStep, setDeployStep] = useState<number>(0);
@@ -60,12 +63,47 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const [customWebPort, setCustomWebPort] = useState('80');
   const [customVncPort, setCustomVncPort] = useState('5900');
 
-  useEffect(() => {
-    fetch('/api/images')
+  // Node-aware fetch bound to the modal's own target: local = this panel,
+  // otherwise routes through that node's proxy (whitelisted /api paths).
+  const apiForNode = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const nodeId = targetNode && targetNode !== 'local' ? targetNode : 'local';
+      if (nodeId === 'local') return fetch(input, init);
+      const path = typeof input === 'string' ? input : String(input);
+      let body: any;
+      if (init?.body) {
+        try {
+          body = JSON.parse(String(init.body));
+        } catch {
+          body = undefined;
+        }
+      }
+      return fetch(`/api/nodes/${nodeId}/proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          path,
+          method: init?.method || 'GET',
+          body,
+        }),
+      });
+    },
+    [targetNode, authToken]
+  );
+
+  const fetchImages = useCallback(() => {
+    apiForNode('/api/images')
       .then((r) => r.json())
       .then((d) => setLocalImages(d.images || []))
       .catch(() => setLocalImages([]));
-  }, []);
+  }, [apiForNode]);
+
+  useEffect(() => {
+    fetchImages();
+  }, [fetchImages]);
 
   const templates = [
     {
@@ -145,7 +183,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const fetchFreePort = async (desiredPort: string) => {
     setIsScanningPort(true);
     try {
-      const res = await fetch(`/api/ports/next?desired=${desiredPort}`);
+      const res = await apiForNode(`/api/ports/next?desired=${desiredPort}`);
       if (res.ok) {
         const data = await res.json();
         if (data.freePort) {

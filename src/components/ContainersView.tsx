@@ -31,13 +31,15 @@ interface ContainersViewProps {
   onOpenDeploy: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  remoteIp?: string | null;
 }
 
 type SortMode = 'name' | 'status' | 'port' | 'cpu';
 
-const buildContainerUrl = (c: ContainerItem): string =>
+const buildContainerUrl = (c: ContainerItem, fallbackHost?: string | null): string =>
   c.osInfo?.vncUrl ||
-  `http://${window.location.hostname}:${c.osInfo?.noVncPort || 6080}/`;
+  `http://${fallbackHost || window.location.hostname}:${c.osInfo?.noVncPort || 6080}/`;
 
 export const ContainersView: React.FC<ContainersViewProps> = ({
   containers,
@@ -47,6 +49,8 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   onOpenDeploy,
   onRefresh,
   isRefreshing,
+  api,
+  remoteIp,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'paused' | 'exited'>('all');
@@ -85,7 +89,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
     });
 
   const handleCopyLink = (c: ContainerItem) => {
-    const url = buildContainerUrl(c);
+    const url = buildContainerUrl(c, remoteIp);
     navigator.clipboard.writeText(url).then(
       () => {
         setCopiedId(c.Id);
@@ -123,7 +127,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
   const handleBatchAction = async (action: string) => {
     if (selectedIds.length === 0) return;
     try {
-      await fetch('/api/containers/batch', {
+      await (api || fetch)('/api/containers/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: selectedIds, action }),
@@ -137,7 +141,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
 
   const handlePrune = async () => {
     try {
-      await fetch('/api/containers/prune', { method: 'POST' });
+      await (api || fetch)('/api/containers/prune', { method: 'POST' });
       onRefresh();
     } catch {
       onRefresh();
@@ -747,6 +751,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
             setRenamingContainer(null);
             onRefresh();
           }}
+          api={api}
         />
       )}
     </div>
@@ -757,7 +762,8 @@ const RenameContainerModal: React.FC<{
   container: ContainerItem;
   onClose: () => void;
   onRenamed: () => void;
-}> = ({ container, onClose, onRenamed }) => {
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}> = ({ container, onClose, onRenamed, api }) => {
   const currentName = (container.Names?.[0] || container.Id).replace('/', '');
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -771,7 +777,7 @@ const RenameContainerModal: React.FC<{
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/containers/${container.Id}/rename`, {
+      const res = await (api || fetch)(`/api/containers/${container.Id}/rename`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),

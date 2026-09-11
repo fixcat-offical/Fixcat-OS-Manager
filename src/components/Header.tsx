@@ -10,8 +10,9 @@ import {
   LogOut,
   Sparkles,
   Clock,
+  Monitor,
 } from 'lucide-react';
-import { SystemInfo } from '../types';
+import { SystemInfo, NodeItem } from '../types';
 
 interface HeaderProps {
   systemInfo: SystemInfo | null;
@@ -25,6 +26,9 @@ interface HeaderProps {
   username?: string | null;
   role?: string | null;
   lastUpdated?: Date | null;
+  nodes?: NodeItem[];
+  activeNodeId?: string;
+  onChangeNode?: (id: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,6 +42,9 @@ export const Header: React.FC<HeaderProps> = ({
   username,
   role,
   lastUpdated,
+  nodes = [],
+  activeNodeId = 'local',
+  onChangeNode,
 }) => {
   const getTabTitle = (tab: string) => {
     switch (tab) {
@@ -135,6 +142,27 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center flex-wrap gap-2">
+        {/* Device selector: manage local panel or a connected node */}
+        {(onChangeNode && nodes.length > 0) && (
+          <div className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs">
+            <Monitor className={`w-3.5 h-3.5 ${activeNodeId !== 'local' ? 'text-cyan-400' : 'text-slate-500'}`} />
+            <select
+              id="device-selector"
+              value={activeNodeId}
+              onChange={(e) => onChangeNode(e.target.value)}
+              className="bg-transparent text-slate-200 font-medium outline-none cursor-pointer max-w-[150px]"
+              title="Управление устройством — все вкладки работают с выбранным ПК"
+            >
+              <option value="local" className="bg-slate-900">🖥️ Этот ПК</option>
+              {nodes.map((n) => (
+                <option key={n.id} value={n.id} className={`bg-slate-900 ${n.status?.online ? '' : ''}`}>
+                  {n.status?.online ? '🟢' : '🔴'} {n.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Quick System Load Badges (Desktop) */}
         {systemInfo && (
           <div className="hidden xl:flex items-center space-x-2 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl text-xs">
