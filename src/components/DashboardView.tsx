@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Server,
   Activity,
@@ -17,6 +17,12 @@ import {
   Zap,
   Clock,
   Network,
+  History,
+  UserPlus,
+  Box,
+  RefreshCw,
+  Settings2,
+  Type,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -29,6 +35,32 @@ import {
 } from 'recharts';
 import { ContainerItem, SystemInfo, MetricHistoryPoint } from '../types';
 import { getOSIcon } from './icons/OSIcons';
+
+interface EventEntry {
+  timestamp: string;
+  type: string;
+  message: string;
+  container?: string;
+  id?: string;
+}
+
+const eventTypeIcon = (type: string) => {
+  if (type === 'user') return <UserPlus className="w-3.5 h-3.5 text-violet-400" />;
+  if (type === 'config') return <Settings2 className="w-3.5 h-3.5 text-amber-400" />;
+  if (type === 'create' || type === 'custom-create') return <Box className="w-3.5 h-3.5 text-emerald-400" />;
+  if (type === 'autostart' || type === 'action') return <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />;
+  if (type === 'rename') return <Type className="w-3.5 h-3.5 text-blue-400" />;
+  return <Clock className="w-3.5 h-3.5 text-slate-500" />;
+};
+
+const relativeTime = (iso: string) => {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 10) return 'только что';
+  if (diff < 60) return `${Math.floor(diff)}с назад`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}м назад`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}ч назад`;
+  return new Date(iso).toLocaleString();
+};
 
 const formatUptime = (seconds: number) => {
   const days = Math.floor(seconds / 86400);
@@ -70,6 +102,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const runningContainers = containers.filter((c) => c.State === 'running');
   const pausedContainers = containers.filter((c) => c.State === 'paused');
+
+  const [events, setEvents] = useState<EventEntry[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadEvents = () => {
+      fetch('/api/events')
+        .then((r) => r.json())
+        .then((d) => {
+          if (!cancelled) setEvents(d.events || []);
+        })
+        .catch(() => {});
+    };
+    loadEvents();
+    const iv = setInterval(loadEvents, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, []);
 
   // Resource calculations
   const totalRamUsedByOsBytes = runningContainers.reduce((acc, c) => acc + (c.stats?.memoryUsage || 0), 0);
@@ -663,6 +715,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Event Journal */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-bold text-white">Журнал событий</h3>
+          </div>
+          <span className="text-[11px] text-slate-500 font-mono">{events.length > 0 ? `последние ${events.length}` : ''}</span>
+        </div>
+
+        {events.length === 0 ? (
+          <p className="text-xs text-slate-500">Событий пока нет — действия панели будут записываться сюда.</p>
+        ) : (
+          <ul className="divide-y divide-slate-800/60">
+            {events.slice(0, 30).map((ev, i) => (
+              <li key={`${ev.timestamp}-${i}`} className="py-2 flex items-start gap-3">
+                <span className="mt-0.5 shrink-0 p-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                  {eventTypeIcon(ev.type)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-slate-300 truncate">{ev.message}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{relativeTime(ev.timestamp)}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

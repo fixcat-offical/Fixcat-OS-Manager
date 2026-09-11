@@ -201,6 +201,9 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `GET` | `/api/images` | Локальные Docker-образы |
 | `GET` | `/api/docker/info` | Параметры Docker Engine |
 | `GET` | `/api/health` | Health-check панели |
+| `GET` | `/api/events` | Журнал событий панели и Docker |
+| `GET` | `/api/config/backup` | Скачать конфиг панели (JSON) |
+| `POST` | `/api/config/restore` | Восстановить конфиг из JSON |
 | `GET` | `/api/installer/status` | Статус установки |
 | `GET` | `/api/installer/stream` | SSE live-логи установки и модулей |
 | `POST` | `/api/installer/start` | Запустить установщик |

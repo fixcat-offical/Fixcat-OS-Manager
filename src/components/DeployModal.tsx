@@ -12,6 +12,8 @@ import {
   Zap,
   Server,
   Radio,
+  Box,
+  Package,
 } from 'lucide-react';
 import {
   UbuntuIcon,
@@ -20,6 +22,14 @@ import {
   KaliIcon,
   AlpineIcon,
 } from './icons/OSIcons';
+
+interface DockerImage {
+  id: string;
+  repo: string;
+  tag: string;
+  size: number;
+  created: number;
+}
 
 interface DeployModalProps {
   onClose: () => void;
@@ -40,6 +50,19 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
   const [deployError, setDeployError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isScanningPort, setIsScanningPort] = useState(false);
+
+  const [localImages, setLocalImages] = useState<DockerImage[]>([]);
+  const [customImage, setCustomImage] = useState('');
+  const [customImageSelect, setCustomImageSelect] = useState('');
+  const [customWebPort, setCustomWebPort] = useState('80');
+  const [customVncPort, setCustomVncPort] = useState('5900');
+
+  useEffect(() => {
+    fetch('/api/images')
+      .then((r) => r.json())
+      .then((d) => setLocalImages(d.images || []))
+      .catch(() => setLocalImages([]));
+  }, []);
 
   const templates = [
     {
@@ -102,6 +125,17 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
       defaultRam: '512',
       desc: 'Сверхбыстрый дистрибутив с минимальным потреблением ресурсов.',
     },
+    {
+      id: 'custom',
+      name: 'Пользовательский образ (любой Docker)',
+      renderIcon: () => <Box className="w-6 h-6" />,
+      badge: 'Pro',
+      image: '',
+      webPort: 80,
+      vncPort: 5900,
+      defaultRam: '2048',
+      desc: 'Укажите любой Docker-образ или выберите локально скачанный.',
+    },
   ];
 
   // Auto-scan for available free port
@@ -123,18 +157,29 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
   };
 
   useEffect(() => {
+    if (selectedTemplate === 'custom') return;
     const tpl = templates.find((t) => t.id === selectedTemplate) || templates[0];
     fetchFreePort(tpl.defaultPort);
   }, [selectedTemplate]);
 
   const handleSelectTemplate = (tpl: any) => {
     setSelectedTemplate(tpl.id);
-    setContainerName(`${tpl.id}-desktop-${Math.floor(Math.random() * 89 + 10)}`);
-    setRamMb(tpl.defaultRam);
+    setDeployError(null);
+    setCopied(false);
+    if (tpl.id !== 'custom') {
+      setContainerName(`${tpl.id}-desktop-${Math.floor(Math.random() * 89 + 10)}`);
+      setRamMb(tpl.defaultRam);
+    } else {
+      setContainerName(`custom-os-${Math.floor(Math.random() * 89 + 10)}`);
+    }
   };
 
   const selectedTplObj = templates.find((t) => t.id === selectedTemplate) || templates[0];
-  const dockerCmd = `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${selectedTplObj.webPort} -p ${parseInt(vncPort, 10) + 100}:${selectedTplObj.vncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${selectedTplObj.image}`;
+  const isCustom = selectedTemplate === 'custom';
+  const resolvedImage = (isCustom ? (customImageSelect || customImage || '').trim() : selectedTplObj.image) || 'user/image:latest';
+  const resolvedWebPort = isCustom ? (parseInt(customWebPort, 10) || 80) : selectedTplObj.webPort;
+  const resolvedVncPort = isCustom ? (parseInt(customVncPort, 10) || 5900) : selectedTplObj.vncPort;
+  const dockerCmd = `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
   const handleCopyCmd = () => {
     navigator.clipboard.writeText(dockerCmd);
@@ -144,6 +189,10 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
 
   const handleAutoDeploy = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCustom && !customImage.trim() && !customImageSelect) {
+      setDeployError('Укажите имя Docker-образа для пользовательского развертывания.');
+      return;
+    }
     setIsDeploying(true);
     setDeployError(null);
     setDeployStep(1);
@@ -153,7 +202,10 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
 
     try {
       await onDeploy({
-        osType: selectedTemplate,
+        osType: isCustom ? 'custom' : selectedTemplate,
+        image: isCustom ? resolvedImage : undefined,
+        webPort: isCustom ? resolvedWebPort : undefined,
+        vncPortInternal: isCustom ? resolvedVncPort : undefined,
         containerName,
         vncPort,
         ramMb,
@@ -226,6 +278,79 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
                 );
               })}
             </div>
+
+            {isCustom && (
+              <div className="mt-3 p-4 rounded-xl bg-slate-950 border border-blue-500/30 space-y-3 animate-fade-in">
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-blue-300 uppercase tracking-wider">
+                  <Package className="w-3.5 h-3.5" />
+                  Параметры пользовательского образа
+                </div>
+
+                <div>
+                  <label className="text-slate-400 mb-1 block text-xs">Имя Docker-образа:</label>
+                  <input
+                    type="text"
+                    value={customImage}
+                    disabled={isDeploying || !!customImageSelect}
+                    onChange={(e) => setCustomImage(e.target.value)}
+                    placeholder="e.g. ghcr.io/linuxserver/webtop:ubuntu-xfce"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono text-xs disabled:opacity-50"
+                  />
+                </div>
+
+                {localImages.length > 0 && (
+                  <div>
+                    <label className="text-slate-400 mb-1 block text-xs">Или из локальных образов (не скачанный будет подтянут):</label>
+                    <select
+                      value={customImageSelect}
+                      disabled={isDeploying}
+                      onChange={(e) => {
+                        setCustomImageSelect(e.target.value);
+                        if (e.target.value) setCustomImage('');
+                      }}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono text-xs disabled:opacity-50"
+                    >
+                      <option value="">— Ввести вручную —</option>
+                      {localImages.map((img) => (
+                        <option key={img.id} value={`${img.repo}:${img.tag}`}>
+                          {img.repo}:{img.tag} ({(img.size / 1048576).toFixed(0)} MB)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 mb-1 block">Внутренний web/HTTP порт:</label>
+                    <input
+                      type="number"
+                      value={customWebPort}
+                      disabled={isDeploying}
+                      onChange={(e) => setCustomWebPort(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 mb-1 block">Внутренний VNC/display порт:</label>
+                    <input
+                      type="number"
+                      value={customVncPort}
+                      disabled={isDeploying}
+                      onChange={(e) => setCustomVncPort(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isCustom && !customImageSelect && !customImage.trim() && (
+              <p className="text-[11px] text-amber-400/90 flex items-center gap-1.5 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Укажите имя образа — без него развернуть не получится.
+              </p>
+            )}
           </div>
 
           {/* Form Fields */}

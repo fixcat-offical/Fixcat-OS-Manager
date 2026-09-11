@@ -16,6 +16,7 @@ import {
   Cpu,
   Activity,
   Boxes,
+  AlertCircle,
 } from 'lucide-react';
 import { SystemInfo } from '../types';
 
@@ -57,6 +58,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [copiedScript, setCopiedScript] = useState(false);
   const [dockerInfo, setDockerInfo] = useState<DockerInfo | null>(null);
   const [images, setImages] = useState<DockerImage[] | null>(null);
+  const [configBackupStatus, setConfigBackupStatus] = useState<'idle' | 'ok' | 'err'>('idle');
+  const [configRestoreStatus, setConfigRestoreStatus] = useState<'idle' | 'ok' | 'err'>('idle');
+  const [configRestoreMsg, setConfigRestoreMsg] = useState('');
 
   const fetchDockerInfo = () => {
     fetch('/api/docker/info')
@@ -84,6 +88,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleDownloadConfigBackup = async () => {
+    try {
+      const res = await fetch('/api/config/backup');
+      if (!res.ok) throw new Error('Backup fetch failed');
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fixcat-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setConfigBackupStatus('ok');
+      setTimeout(() => setConfigBackupStatus('idle'), 3000);
+    } catch {
+      setConfigBackupStatus('err');
+      setTimeout(() => setConfigBackupStatus('idle'), 3000);
+    }
+  };
+
+  const handleRestoreConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const raw = JSON.parse(reader.result as string);
+        const cfg = raw.config || raw;
+        const res = await fetch('/api/config/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config: cfg }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'restore failed');
+        setConfigRestoreStatus('ok');
+        setConfigRestoreMsg('Конфигурация восстановлена — обновите страницу для применения всех настроек.');
+        setTimeout(() => setConfigRestoreStatus('idle'), 4000);
+      } catch (err: any) {
+        setConfigRestoreStatus('err');
+        setConfigRestoreMsg(err?.message || 'Ошибка восстановления конфигурации');
+        setTimeout(() => setConfigRestoreStatus('idle'), 4000);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const laptopRunCommand = `# Запуск панели на ноутбуке с прямым доступом к Docker сокету:
@@ -201,6 +253,61 @@ docker run -d \\
           </button>
         </div>
       </form>
+
+      {/* Config Backup / Restore */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-violet-400" />
+            Бэкап / Восстановление конфигурации
+          </h3>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Скачайте текущий конфиг панели (IP, Docker Host) в JSON-файл и восстановите его на другом экземпляре.
+        </p>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleDownloadConfigBackup}
+            className={`px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-2 transition-colors ${
+              configBackupStatus === 'ok'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : configBackupStatus === 'err'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                : 'bg-violet-500/15 hover:bg-violet-500/25 text-violet-200 border border-violet-500/25'
+            }`}
+          >
+            {configBackupStatus === 'ok' ? <Check className="w-3.5 h-3.5" /> : <HardDrive className="w-3.5 h-3.5" />}
+            {configBackupStatus === 'ok' ? 'Скачано' : configBackupStatus === 'err' ? 'Ошибка' : 'Скачать текущий конфиг'}
+          </button>
+
+          <label
+            className={`px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-2 transition-colors ${
+              configRestoreStatus === 'ok'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : configRestoreStatus === 'err'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+            }`}
+          >
+            {configRestoreStatus === 'ok' ? <Check className="w-3.5 h-3.5" /> : configRestoreStatus === 'err' ? <AlertCircle className="w-3.5 h-3.5" /> : <Radio className="w-3.5 h-3.5" />}
+            {configRestoreStatus === 'ok' ? 'Готово' : configRestoreStatus === 'err' ? 'Ошибка' : 'Загрузить и восстановить'}
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleRestoreConfig}
+              className="hidden"
+            />
+          </label>
+        </div>
+
+        {configRestoreMsg && configRestoreStatus !== 'idle' && (
+          <p className={`text-xs font-medium ${configRestoreStatus === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {configRestoreMsg}
+          </p>
+        )}
+      </div>
 
       {/* Instructions on running on laptop */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">

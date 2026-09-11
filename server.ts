@@ -90,6 +90,25 @@ function requireAdmin(req: any, res: any, next: () => void) {
   next();
 }
 
+// In-memory event journal (last 150 events)
+interface EventEntry {
+  timestamp: string;
+  type: string;
+  message: string;
+  container?: string;
+  id?: string;
+}
+
+const eventLog: EventEntry[] = [];
+
+function recordEvent(type: string, message: string, container?: string, id?: string) {
+  const entry: EventEntry = { timestamp: new Date().toISOString(), type, message };
+  if (container) entry.container = container;
+  if (id) entry.id = id;
+  eventLog.unshift(entry);
+  if (eventLog.length > 150) eventLog.length = 150;
+}
+
 // In-memory telemetry history for real system charts
 interface MetricPoint {
   timestamp: string;
@@ -631,7 +650,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
     status: 'active',
   };
   saveUsers([...users, newUser]);
-
+  recordEvent('user', `Создан пользователь «${newUser.username}» (${role === 'admin' ? 'админ' : 'пользователь'})`);
   res.json({ success: true, user: { ...newUser, passwordHash: undefined } });
 });
 
@@ -679,6 +698,7 @@ app.put('/api/users/:username', requireAdmin, (req, res) => {
   if (status === 'active' || status === 'disabled') users[idx].status = status;
 
   saveUsers(users);
+  recordEvent('user', `Обновлён пользователь «${users[idx].username}»`);
   res.json({ success: true, user: { ...users[idx], passwordHash: undefined } });
 });
 
@@ -704,6 +724,7 @@ app.delete('/api/users/:username', requireAdmin, (req, res) => {
     if (uname === removed.username) sessions.delete(token);
   }
   saveUsers(users);
+  recordEvent('user', `Удалён пользователь «${removed.username}»`);
   res.json({ success: true, deleted: removed.username });
 });
 
@@ -1420,6 +1441,7 @@ app.post('/api/containers/:id/action', async (req, res) => {
 
     const { statusCode, data } = await queryDockerSocket(dockerPath, dockerMethod);
     if (statusCode < 300) {
+      recordEvent('action', `Действие «${action}» выполнено`, id.slice(0, 12), id);
       return res.json({ success: true, message: `Действие "${action}" успешно выполнено.` });
     } else {
       return res.status(400).json({ error: data?.message || `Ошибка выполнения "${action}" в Docker.` });
@@ -1455,6 +1477,7 @@ app.post('/api/containers/:id/rename', async (req, res) => {
   try {
     const { statusCode, data } = await queryDockerSocket(`/containers/${id}/rename?name=${encodeURIComponent(name)}`, 'POST');
     if (statusCode < 300) {
+      recordEvent('rename', `Контейнер переименован в «${name}»`, id.slice(0, 12), id);
       return res.json({ success: true, message: `Контейнер переименован в "${name}".` });
     }
     return res.status(statusCode).json({ error: data?.message || 'Не удалось переименовать контейнер.' });
@@ -1539,10 +1562,51 @@ app.get('/api/images', async (req, res) => {
   }
 });
 
+// 4f. Event journal (recent panel activity)
+app.get('/api/events', async (req, res) => {
+  let dockerEvents: any[] = [];
+  try {
+    const { statusCode, data } = await queryDockerSocket('/events?since=' + Math.floor(Date.now() / 1000 - 300), 'GET');
+    if (statusCode === 200 && Array.isArray(data)) {
+      dockerEvents = data
+        .filter((e: any) => ['container', 'image'].includes(e.Type))
+        .slice(-30)
+        .map((e: any) => ({
+          timestamp: new Date((e.time || 0) * 1000).toISOString(),
+          type: `docker-${e.Action || 'event'}`,
+          message: `${e.Type === 'container' ? 'Контейнер' : 'Образ'} ${e.Actor?.Attributes?.name ? `«${e.Actor.Attributes.name}»` : (e.id?.slice?.(0, 12) || '')}: ${e.Action || 'событие'}`,
+          container: e.Actor?.Attributes?.name,
+          id: e.id,
+        }));
+    }
+  } catch { /* ignore docker event errors — panel journal still works */ }
+  res.json({ events: [...dockerEvents, ...eventLog].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 100) });
+});
+
+// 4g. Config backup / restore (download JSON, apply JSON)
+app.get('/api/config/backup', (req, res) => {
+  res.json({ success: true, config: appConfig, exportedAt: new Date().toISOString(), appVersion });
+});
+
+app.post('/api/config/restore', (req, res) => {
+  const cfg = req.body?.config;
+  if (!cfg || typeof cfg !== 'object') {
+    return res.status(400).json({ error: 'Отсутствует блок "config" в загруженном файле.' });
+  }
+  if (cfg.hostIp !== undefined) appConfig.hostIp = String(cfg.hostIp);
+  if (cfg.dockerSocketPath !== undefined) appConfig.dockerSocketPath = String(cfg.dockerSocketPath);
+  if (cfg.dockerTcpHost !== undefined) appConfig.dockerTcpHost = String(cfg.dockerTcpHost);
+  if (cfg.refreshInterval !== undefined) {
+    const ri = Number(cfg.refreshInterval);
+    if (ri > 0) appConfig.refreshInterval = ri;
+  }
+  recordEvent('config', 'Конфигурация восстановлена из бэкапа');
+  res.json({ success: true, config: appConfig, message: 'Конфигурация успешно применена.' });
+});
+
 // 5b. Container Inspect (full Docker metadata)
 app.get('/api/containers/:id/inspect', async (req, res) => {
   const { id } = req.params;
-
   try {
     const { statusCode, data } = await queryDockerSocket(`/containers/${id}/json`);
     if (statusCode === 200) {
@@ -1644,6 +1708,7 @@ app.post('/api/autostarts/:id', async (req, res) => {
       RestartPolicy: { Name: policy, MaximumRetryCount: policy === 'on-failure' ? 5 : 0 },
     });
     if (statusCode < 300) {
+      recordEvent('autostart', `Политика автозапуска → «${policy}»`, id.slice(0, 12), id);
       return res.json({ success: true, message: `Автозапуск контейнера установлен: "${policy}".` });
     }
     return res.status(statusCode).json({ error: data?.message || 'Не удалось обновить политику перезапуска.' });
@@ -1659,6 +1724,7 @@ app.delete('/api/autostarts/:id', async (req, res) => {
       RestartPolicy: { Name: 'no', MaximumRetryCount: 0 },
     });
     if (statusCode < 300) {
+      recordEvent('autostart', 'Автозапуск отключён (no)', id.slice(0, 12), id);
       return res.json({ success: true, message: 'Автозапуск удалён (политика "no").' });
     }
     return res.status(statusCode).json({ error: data?.message || 'Не удалось удалить автозапуск.' });
@@ -1692,6 +1758,15 @@ app.post('/api/config', (req, res) => {
 // 8. FULL AUTOMATED Deploy OS Container with FREE PORT AUTO-DISCOVERY
 app.post('/api/containers/create', async (req, res) => {
   const { osType, containerName, vncPort, ramMb, cpuCores, resolution, restartPolicy } = req.body;
+  // Deploy from arbitrary/custom image (overrides template mapping)
+  let customImageName: string | null = null;
+  let customWebPort: number | null = null;
+  let customVncPort: number | null = null;
+  if (req.body.image) {
+    customImageName = String(req.body.image).trim();
+    customWebPort = req.body.webPort ? parseInt(req.body.webPort, 10) : null;
+    customVncPort = req.body.vncPortInternal ? parseInt(req.body.vncPortInternal, 10) : null;
+  }
 
   const requestedPort = parseInt(vncPort, 10) || 6082;
   const actualPort = await getAvailablePort(requestedPort);
@@ -1700,19 +1775,27 @@ app.post('/api/containers/create', async (req, res) => {
   const name = containerName || `${osType || 'ubuntu'}-desktop-${Math.floor(Math.random() * 900 + 100)}`;
 
   let image = 'dorowu/ubuntu-desktop-lxde-vnc:latest';
-  if (osType === 'windows-xp') image = 'dockur/windows:xp';
-  if (osType === 'debian') image = 'ghcr.io/linuxserver/webtop:debian-xfce';
-  if (osType === 'kali') image = 'kasmweb/kali-rolling-desktop:1.16.0';
-  if (osType === 'alpine') image = 'ghcr.io/linuxserver/webtop:alpine-kde';
+  if (customImageName) {
+    image = customImageName;
+  } else {
+    if (osType === 'windows-xp') image = 'dockur/windows:xp';
+    if (osType === 'debian') image = 'ghcr.io/linuxserver/webtop:debian-xfce';
+    if (osType === 'kali') image = 'kasmweb/kali-rolling-desktop:1.16.0';
+    if (osType === 'alpine') image = 'ghcr.io/linuxserver/webtop:alpine-kde';
+  }
 
   // Different images expose noVNC/VNC on different container ports
-  const imgPorts = getImagePorts(image);
+  const imgPorts =
+    customImageName && customWebPort && customVncPort
+      ? { web: customWebPort, vnc: customVncPort }
+      : getImagePorts(image);
 
   const dockerRunCmd = `docker run -d --restart=${restartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc} -e RESOLUTION=${resolution || '1920x1080'} --memory=${ramMb || 2048}m --cpus=${cpuCores || 2} ${image}`;
 
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
       const containerId = stdout.trim();
+      recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, containerId, containerId);
       return res.json({
         success: true,
         containerId,
@@ -1753,6 +1836,7 @@ app.post('/api/containers/create', async (req, res) => {
 
         if (createRes.statusCode < 300 && createRes.data?.Id) {
           await queryDockerSocket(`/containers/${createRes.data.Id}/start`, 'POST');
+          recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, createRes.data.Id, createRes.data.Id);
           return res.json({
             success: true,
             containerId: createRes.data.Id,
