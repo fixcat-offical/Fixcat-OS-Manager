@@ -1513,6 +1513,32 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// 4e. Local Docker images list (for deploy-by-image)
+app.get('/api/images', async (req, res) => {
+  try {
+    const { statusCode, data } = await queryDockerSocket('/images/json?all=0');
+    if (statusCode === 200 && Array.isArray(data)) {
+      const images = data
+        .map((img: any) => {
+          const tag = img.RepoTags?.[0] || `${img.Id.slice(0, 12)}:latest`;
+          const [repo, tagName] = tag.split(':');
+          return {
+            id: img.Id,
+            repo,
+            tag: tagName || 'latest',
+            size: img.Size || 0,
+            created: img.Created,
+          };
+        })
+        .sort((a: any, b: any) => a.repo.localeCompare(b.repo));
+      return res.json({ images });
+    }
+    return res.status(400).json({ error: 'Docker сокет недоступен', images: [] });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Ошибка Docker сокета.', images: [] });
+  }
+});
+
 // 5b. Container Inspect (full Docker metadata)
 app.get('/api/containers/:id/inspect', async (req, res) => {
   const { id } = req.params;

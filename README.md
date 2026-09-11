@@ -195,7 +195,12 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `GET` | `/api/system` | Информация о хосте (CPU/RAM/GPU/диск/сеть, версия приложения) |
 | `GET` | `/api/containers` | Список контейнеров |
 | `GET` | `/api/containers/:id/inspect` | Детали контейнера |
+| `POST` | `/api/containers/:id/rename` | Переименовать контейнер |
+| `GET` | `/api/containers/:id/logs` | Логи контейнера |
 | `POST` | `/api/containers/create` | Развернуть ОС |
+| `GET` | `/api/images` | Локальные Docker-образы |
+| `GET` | `/api/docker/info` | Параметры Docker Engine |
+| `GET` | `/api/health` | Health-check панели |
 | `GET` | `/api/installer/status` | Статус установки |
 | `GET` | `/api/installer/stream` | SSE live-логи установки и модулей |
 | `POST` | `/api/installer/start` | Запустить установщик |
@@ -205,6 +210,7 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `POST` | `/api/modules/:id/install` | Установить модуль |
 | `POST` | `/api/modules/:id/uninstall` | Удалить модуль |
 | `GET` | `/api/autostarts` | Список политик автозапуска контейнеров |
+| `POST` | `/api/autostarts/bulk` | Применить политику ко всем контейнерам |
 | `POST` | `/api/autostarts/:id` | Установить политику (`no`, `always`, `unless-stopped`, `on-failure`) |
 | `DELETE` | `/api/autostarts/:id` | Удалить автозапуск (политика `no`) |
 | `GET` | `/api/auth/status` | Проверка авторизации (возвращает роль) |
@@ -212,6 +218,7 @@ Backend · Node.js · Express · SSE (live-логи) · Docker Socket API · Web
 | `POST` | `/api/auth/login` | Вход (поддержка нескольких одновременных сессий) |
 | `POST` | `/api/auth/logout` | Выход из текущей сессии |
 | `POST` | `/api/auth/change-password` | Смена собственного пароля 🔒 |
+| `GET` | `/api/users/backup` | Скачать бэкап пользователей 🔒👑 |
 | `GET` | `/api/users` | Список всех пользователей 🔒👑 |
 | `POST` | `/api/users` | Создать пользователя 🔒👑 |
 | `PUT` | `/api/users/:username` | Редактирование (логин, пароль, роль, статус) 🔒👑 |

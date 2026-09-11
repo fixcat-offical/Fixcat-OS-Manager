@@ -15,8 +15,17 @@ import {
   Layers,
   Cpu,
   Activity,
+  Boxes,
 } from 'lucide-react';
 import { SystemInfo } from '../types';
+
+interface DockerImage {
+  id: string;
+  repo: string;
+  tag: string;
+  size: number;
+  created: number;
+}
 
 interface DockerInfo {
   connected: boolean;
@@ -47,12 +56,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [saved, setSaved] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
   const [dockerInfo, setDockerInfo] = useState<DockerInfo | null>(null);
+  const [images, setImages] = useState<DockerImage[] | null>(null);
 
-  useEffect(() => {
+  const fetchDockerInfo = () => {
     fetch('/api/docker/info')
       .then((r) => r.json())
       .then(setDockerInfo)
       .catch(() => setDockerInfo(null));
+  };
+
+  useEffect(() => {
+    fetchDockerInfo();
+    fetch('/api/images')
+      .then((r) => r.json())
+      .then((d) => setImages(d.images || []))
+      .catch(() => setImages(null));
   }, []);
 
   const isDockerActive = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
@@ -273,6 +291,48 @@ docker run -d \\
                 {dockerInfo.memoryTotalMb ? `${(dockerInfo.memoryTotalMb / 1024).toFixed(1)} GB` : '—'}
               </p>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Local Docker Images */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <Boxes className="w-4 h-4 text-cyan-400" />
+            Локальные образы Docker
+          </h3>
+          <span className="text-[11px] text-slate-500 font-mono">{images ? `${images.length} образ(ов)` : ''}</span>
+        </div>
+
+        {images === null ? (
+          <p className="text-xs text-slate-500">Загрузка...</p>
+        ) : images.length === 0 ? (
+          <p className="text-xs text-slate-500">Образы недоступны — Docker сокет не подключен.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                <tr>
+                  <th className="py-2 pr-4">Репозиторий</th>
+                  <th className="py-2 pr-4">Тег</th>
+                  <th className="py-2 pr-4">Размер</th>
+                  <th className="py-2">ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {images.map((img) => (
+                  <tr key={img.id} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="py-2 pr-4 text-slate-200 font-medium">{img.repo}</td>
+                    <td className="py-2 pr-4">
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[11px]">{img.tag}</span>
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400 font-mono">{(img.size / 1048576).toFixed(0)} MB</td>
+                    <td className="py-2 text-slate-500 font-mono text-[11px]">{img.id.slice(0, 12)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
