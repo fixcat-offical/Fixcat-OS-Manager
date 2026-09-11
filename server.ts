@@ -209,10 +209,11 @@ loadAppConfig();
 // Map OS image → internal noVNC web port + VNC port
 function getImagePorts(image: string): { web: number; vnc: number } {
   const i = image.toLowerCase();
+  if (i.includes('accetto')) return { web: 6901, vnc: 5901 };
   if (i.includes('kasmweb')) return { web: 6901, vnc: 5901 };
   if (i.includes('webtop')) return { web: 3000, vnc: 5900 };
   if (i.includes('dockur')) return { web: 8006, vnc: 5900 };
-  return { web: 80, vnc: 5900 }; // dorowu ubuntu-desktop-lxde-vnc
+  return { web: 80, vnc: 5900 }; // generic VNC fallback
 }
 
 // Helper to query real GPU stats via nvidia-smi with Intel iGPU fallback
@@ -493,24 +494,63 @@ function detectOSAndVnc(container: any) {
   let resolution = '1920x1080';
   let description = 'Контейнер с графическим окружением';
 
-  if (image.includes('ubuntu') || lowerName.includes('ubuntu')) {
-    type = 'ubuntu';
-    displayName = 'Ubuntu 22.04 LTS Desktop';
-    distro = 'Ubuntu';
-    version = '22.04 LTS';
-    icon = 'ubuntu';
-    desktopEnv = 'LXDE / XFCE';
-    description = 'Полноценный рабочий стол Ubuntu с браузером и терминалом';
-  } else if (image.includes('windows') || lowerName.includes('winxp') || lowerName.includes('windows')) {
-    type = 'windows-xp';
-    displayName = 'Windows XP Professional SP3';
-    distro = 'Windows';
-    version = 'XP SP3';
-    icon = 'windows-xp';
-    desktopEnv = 'Luna Shell';
+  const labelOs = (container.Labels && (container.Labels['io.fixcat.os'] || container.Labels['fixcat.os'])) || '';
+  const containerEnv: string[] = Array.isArray(container.Config?.Env) ? container.Config.Env : [];
+  if (labelOs === 'windows' || ['windows-xp', 'windows-7', 'windows-8', 'windows-10'].includes(labelOs) || image.includes('windows') || lowerName.includes('windows') || lowerName.includes('winxp')) {
+    const versionTag = (containerEnv.find((e) => e.startsWith('VERSION=')) || '').split('=')[1] || '';
+    const legacyTag = (image.split(':').pop() || '')
+      .replace(/--/g, ':')
+      .split(':')[0]
+      .replace(/\d+\.\d+\.\d+/g, '')
+      .toLowerCase();
+    if (labelOs === 'windows-10' || versionTag === '10' || legacyTag === '10' || legacyTag.startsWith('10')) {
+      type = 'windows-10';
+      displayName = 'Windows 10 Pro';
+      distro = 'Windows';
+      version = '10 22H2';
+      icon = 'windows-10';
+      desktopEnv = 'Modern UI';
+    } else if (labelOs === 'windows-8' || versionTag === '8e' || versionTag === '8' || legacyTag === '8.1' || legacyTag === '8') {
+      type = 'windows-8';
+      displayName = 'Windows 8.1 Enterprise';
+      distro = 'Windows';
+      version = '8.1';
+      icon = 'windows-8';
+      desktopEnv = 'Modern UI (Metro)';
+    } else if (labelOs === 'windows-7' || versionTag === '7u' || versionTag === '7' || legacyTag === '7' || legacyTag.startsWith('7')) {
+      type = 'windows-7';
+      displayName = 'Windows 7 Ultimate';
+      distro = 'Windows';
+      version = '7 SP1';
+      icon = 'windows-7';
+      desktopEnv = 'Aero / Basic';
+    } else if (labelOs === 'windows-xp' || versionTag === 'xp' || legacyTag === 'xp') {
+      type = 'windows-xp';
+      displayName = 'Windows XP Professional SP3';
+      distro = 'Windows';
+      version = 'XP SP3';
+      icon = 'windows-xp';
+      desktopEnv = 'Luna Shell';
+    } else {
+      type = 'windows';
+      displayName = 'Windows VM (dockur)';
+      distro = 'Windows';
+      version = 'Latest';
+      icon = 'windows';
+      desktopEnv = 'Desktop';
+    }
     vncPath = '/';
     resolution = '1024x768';
-    description = 'Классическая ОС Windows XP в виртуальной среде QEMU/Docker';
+    description = 'Windows в контейнере dockur со встроенным noVNC-просмотрщиком (порт 8006). ISO скачивается при первом запуске.';
+  } else if (image.includes('ubuntu') || labelOs === 'ubuntu' || lowerName.includes('ubuntu')) {
+    type = 'ubuntu';
+    displayName = 'Ubuntu 24.04 LTS (XFCE)';
+    distro = 'Ubuntu';
+    version = '24.04 LTS';
+    icon = 'ubuntu';
+    desktopEnv = 'XFCE4';
+    vncPath = image.includes('accetto') ? '/vnc.html?password=headless' : '/vnc.html?autoplay=true&reconnect=true';
+    description = 'Настольный Ubuntu с XFCE и доступом через noVNC (логин/пароль: headless).';
   } else if (image.includes('debian') || lowerName.includes('debian')) {
     type = 'debian';
     displayName = 'Debian 12 Bookworm XFCE';
@@ -1696,14 +1736,44 @@ app.post('/api/containers/create', async (req, res) => {
 
   const name = containerName || `${osType || appConfig.defaultOsTemplate || 'ubuntu'}-desktop-${Math.floor(Math.random() * 900 + 100)}`;
 
-  let image = 'dorowu/ubuntu-desktop-lxde-vnc:latest';
+  let image = 'accetto/ubuntu-vnc-xfce-g3';
+  const windowsVersions: Record<string, string> = { 'windows-xp': 'xp', 'windows-7': '7u', 'windows-8': '8e', 'windows-10': '10' };
+  const windowsVersion = customImageName ? '' : windowsVersions[osType] || '';
   if (customImageName) {
     image = customImageName;
   } else {
-    if (osType === 'windows-xp') image = 'dockur/windows:xp';
+    if (windowsVersion) image = 'dockurr/windows';
+    if (osType === 'ubuntu') image = 'accetto/ubuntu-vnc-xfce-g3';
     if (osType === 'debian') image = 'ghcr.io/linuxserver/webtop:debian-xfce';
     if (osType === 'kali') image = 'kasmweb/kali-rolling-desktop:1.16.0';
     if (osType === 'alpine') image = 'ghcr.io/linuxserver/webtop:alpine-kde';
+  }
+
+  // dockur Windows VM: VERSION + RAM/CPU + GPU + virtio drivers + KVM devices
+  const isWindows = Boolean(windowsVersion);
+  const ramMbVal = parseInt(ramMb, 10) || appConfig.defaultRamMb || 2048;
+  const ramGb = Math.max(1, Math.ceil(ramMbVal / 1024));
+  const cpuVal = parseInt(cpuCores, 10) || appConfig.defaultCpuCores || 2;
+  let extraEnv = '';
+  let extraDevices = '';
+  let extraVolumes = '';
+  let rdpHostPort: number | null = null;
+  const winDeviceList: string[] = [];
+  if (isWindows) {
+    extraEnv = ` -e VERSION=${windowsVersion} -e RAM_SIZE=${ramGb}G -e CPU_CORES=${cpuVal} -e GPU=Y -e DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers`;
+    for (const dev of ['/dev/kvm', '/dev/net/tun', '/dev/dri/card0', '/dev/dri/renderD128']) {
+      if (fs.existsSync(dev)) {
+        winDeviceList.push(dev);
+        extraDevices += ` --device=${dev}`;
+      }
+    }
+    extraDevices += ' --cap-add NET_ADMIN --stop-timeout 120';
+    const storageDir = path.join(dataDir, 'win-storage', name);
+    try {
+      fs.mkdirSync(storageDir, { recursive: true });
+    } catch { /* host fs may be readonly */ }
+    extraVolumes = ` -v "${storageDir}:/storage"`;
+    rdpHostPort = await getAvailablePort(actualVncPort + 100);
   }
 
   // Different images expose noVNC/VNC on different container ports
@@ -1712,7 +1782,8 @@ app.post('/api/containers/create', async (req, res) => {
       ? { web: customWebPort, vnc: customVncPort }
       : getImagePorts(image);
 
-  const dockerRunCmd = `docker run -d --restart=${restartPolicy || appConfig.defaultRestartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc} -e RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'} --memory=${ramMb || appConfig.defaultRamMb || 2048}m --cpus=${cpuCores || appConfig.defaultCpuCores || 2} ${image}`;
+  const memArg = isWindows ? `${ramGb}g` : `${ramMbVal}m`;
+  const dockerRunCmd = `docker run -d --restart=${restartPolicy || appConfig.defaultRestartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc}${isWindows ? ` -p ${rdpHostPort}:3389/tcp` : ''} -e RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}${extraEnv} --memory=${memArg} --cpus=${cpuVal}${extraDevices}${extraVolumes} --label io.fixcat.os=${osType || 'custom'} ${image}`;
 
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
@@ -1735,15 +1806,27 @@ app.post('/api/containers/create', async (req, res) => {
       if (socketExists) {
         const createBody = {
           Image: image,
-Env: [`RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`],
-         ExposedPorts: { [`${imgPorts.web}/tcp`]: {}, [`${imgPorts.vnc}/tcp`]: {} },
-         HostConfig: {
-           RestartPolicy: { Name: restartPolicy || appConfig.defaultRestartPolicy || 'no', MaximumRetryCount: (restartPolicy || appConfig.defaultRestartPolicy || 'no') === 'on-failure' ? 5 : 0 },
+          Env: [
+            ...(isWindows
+              ? [`VERSION=${windowsVersion}`, `RAM_SIZE=${ramGb}G`, `CPU_CORES=${cpuVal}`, 'GPU=Y', 'DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers']
+              : []),
+            `RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`,
+          ],
+          Labels: { 'io.fixcat.os': osType || 'custom' },
+          ExposedPorts: {
+            [`${imgPorts.web}/tcp`]: {},
+            [`${imgPorts.vnc}/tcp`]: {},
+            ...(isWindows ? { '3389/tcp': {} } : {}),
+          },
+          HostConfig: {
+            RestartPolicy: { Name: restartPolicy || appConfig.defaultRestartPolicy || 'no', MaximumRetryCount: (restartPolicy || appConfig.defaultRestartPolicy || 'no') === 'on-failure' ? 5 : 0 },
             PortBindings: {
               [`${imgPorts.web}/tcp`]: [{ HostPort: String(actualPort) }],
               [`${imgPorts.vnc}/tcp`]: [{ HostPort: String(actualVncPort) }],
+              ...(isWindows && rdpHostPort ? { '3389/tcp': [{ HostPort: String(rdpHostPort) }] } : {}),
             },
-            Memory: (parseInt(ramMb, 10) || appConfig.defaultRamMb || 2048) * 1024 * 1024,
+            Memory: ramMbVal * 1024 * 1024,
+            ...(isWindows && winDeviceList.length ? { Devices: winDeviceList.map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'mrw' })) } : {}),
           },
         };
 

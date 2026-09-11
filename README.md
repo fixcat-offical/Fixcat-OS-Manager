@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
 [![Installer](https://img.shields.io/badge/installer-Fixcat--OS--Manager-6366F1?style=for-the-badge)](install.sh)
 
-**Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP, Debian, Kali, Alpine)
+**Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP/7/8.1/10, Debian, Kali, Alpine)
 **с рабочим столом через браузер (noVNC), следите за CPU/RAM/GPU и управляйте несколькими ПК** — всё в одном месте.
 
 ---
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 | | |
 |---|---|
 | 🐳 **Менеджер контейнеров** | Создание, запуск, пауза, удаление ВМ и ОС, логи, порты, noVNC одним кликом |
-| 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
+| 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP/7/8.1/10, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
 | 📊 **Мониторинг** | Живые метрики CPU, RAM, Multi-GPU (NVIDIA), сеть, диск, история |
 | ⚡ **Профессиональный установщик** | Интерактивный пошаговый установщик с live-логом (SSE), выбор порта/директорий |
 | 📦 **Модули** | Каталог модулей: ОС-образы, Docker/Node/NVIDIA — установка в один клик |
@@ -166,8 +166,11 @@ PORT=3000 NODE_ENV=production node dist/server.js
 
 | Модуль | Назначение | Ресурс |
 |--------|-----------|--------|
-| 🐧 Ubuntu 22.04 Desktop | Полный рабочий стол LXDE + noVNC | `dorowu/ubuntu-desktop-lxde-vnc` |
-| 🪟 Windows XP Professional | Классическая WinXP в QEMU | `dockur/windows:xp` |
+| 🐧 Ubuntu 24.04 Desktop | Полный рабочий стол XFCE + noVNC (логин/пароль: headless) | `accetto/ubuntu-vnc-xfce-g3` |
+| 🪟 Windows XP Professional | Классическая WinXP в QEMU (dockur) | `dockurr/windows` |
+| 🪟 Windows 7 Ultimate | Windows 7 SP1 в QEMU (dockur) | `dockurr/windows` |
+| 🪟 Windows 8.1 Enterprise | Windows 8.1 в QEMU (dockur) | `dockurr/windows` |
+| 🪟 Windows 10 Pro | Windows 10 в QEMU (dockur) | `dockurr/windows` |
 | 🐟 Debian 12 XFCE | Стабильный рабочий стол | `ghcr.io/linuxserver/webtop:debian-xfce` |
 | 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop` |
 | 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `ghcr.io/linuxserver/webtop:alpine-kde` |

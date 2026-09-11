@@ -64,7 +64,11 @@ const defaultModules: ModuleItem[] = [];
 const moduleIcon = (icon: string, className = 'w-6 h-6') => {
   switch (icon) {
     case 'ubuntu': return <UbuntuIcon className={className} />;
-    case 'windows-xp': return <WindowsXPIcon className={className} />;
+    case 'windows-xp':
+    case 'windows-7':
+    case 'windows-8':
+    case 'windows-10':
+    case 'windows': return <WindowsXPIcon className={className} />;
     case 'debian': return <DebianIcon className={className} />;
     case 'kali': return <KaliIcon className={className} />;
     case 'alpine': return <AlpineIcon className={className} />;

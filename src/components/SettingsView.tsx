@@ -100,7 +100,7 @@ const SETTING_LABELS: Record<string, { name: string; desc: string; type: string;
   defaultResolution: { name: 'Разрешение по умолчанию', desc: 'Используется при развёртывании ОС', type: 'select', options: ['1920x1080', '1600x900', '1280x720', '1024x768'] },
   defaultRamMb: { name: 'RAM по умолчанию (MB)', desc: 'Оперативная память для нового контейнера', type: 'number' },
   defaultCpuCores: { name: 'Ядра CPU по умолчанию', desc: 'Количество виртуальных ядер', type: 'number' },
-  defaultOsTemplate: { name: 'Шаблон ОС по умолчанию', desc: 'Шаблон для быстрого развёртывания', type: 'select', options: ['ubuntu', 'debian', 'kali', 'alpine', 'windows-xp'] },
+  defaultOsTemplate: { name: 'Шаблон ОС по умолчанию', desc: 'Шаблон для быстрого развёртывания', type: 'select', options: ['ubuntu', 'debian', 'kali', 'alpine', 'windows-xp', 'windows-7', 'windows-8', 'windows-10'] },
   statsEnabled: { name: 'Телеиметрия (CPU/RAM)', desc: 'Сбор метрик для графиков', type: 'bool' },
   enableGpuTelemetry: { name: 'Мониторинг GPU', desc: 'Опрос nvidia-smi / Intel iGPU', type: 'bool' },
   enableEventJournal: { name: 'Журнал событий', desc: 'Запись действий в панели', type: 'bool' },

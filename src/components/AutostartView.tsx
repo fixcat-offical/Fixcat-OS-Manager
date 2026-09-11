@@ -162,7 +162,13 @@ export const AutostartView: React.FC<AutostartViewProps> = ({ api }) => {
   const isRecognizedImage = (image: string) => {
     const i = image.toLowerCase();
     if (i.includes('ubuntu')) return 'ubuntu';
-    if (i.includes('windows')) return 'windows-xp';
+    if (i.includes('windows')) {
+      const tag = i.split(':').pop() || '';
+      if (tag === '7' || tag === '7u') return 'windows-7';
+      if (tag === '8' || tag === '8.1' || tag === '8e') return 'windows-8';
+      if (tag === '10' || tag === '10l' || tag === '10e') return 'windows-10';
+      return 'windows-xp';
+    }
     if (i.includes('debian')) return 'debian';
     if (i.includes('kali')) return 'kali';
     if (i.includes('alpine')) return 'alpine';

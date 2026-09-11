@@ -301,23 +301,56 @@ const MODULES: ModuleDef[] = [
   {
     id: 'os:ubuntu',
     category: 'os',
-    name: 'Ubuntu 22.04 Desktop',
-    description: 'Полноценный рабочий стол Ubuntu с LXDE и доступом через noVNC.',
+    name: 'Ubuntu 24.04 LTS (XFCE)',
+    description: 'Настольный Ubuntu XFCE с доступом через noVNC — логин и пароль по умолчанию: headless.',
     icon: 'ubuntu',
     group: 'Операционные системы',
-    image: 'dorowu/ubuntu-desktop-lxde-vnc:latest',
-    sizeLabel: '~2.5 GB',
+    image: 'accetto/ubuntu-vnc-xfce-g3:latest',
+    sizeLabel: '~3.5 GB',
     kind: 'image',
   },
   {
     id: 'os:windows-xp',
     category: 'os',
     name: 'Windows XP Professional SP3',
-    description: 'Классическая Windows XP в QEMU-контейнере dockur (скачивается при первом запуске).',
+    description: 'Классическая Windows XP в контейнере dockur — встроенный noVNC-просмотрщик; ISO скачивается при первом запуске.',
     icon: 'windows-xp',
     group: 'Операционные системы',
-    image: 'dockur/windows:xp',
-    sizeLabel: '~6 GB (при первом запуске)',
+    image: 'dockurr/windows:latest',
+    sizeLabel: '~6 GB (ISO при первом запуске)',
+    kind: 'image',
+  },
+  {
+    id: 'os:windows-7',
+    category: 'os',
+    name: 'Windows 7 Ultimate',
+    description: 'Windows 7 Ultimate SP1 в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+    icon: 'windows-7',
+    group: 'Операционные системы',
+    image: 'dockurr/windows:latest',
+    sizeLabel: '~3.1 GB (ISO при первом запуске)',
+    kind: 'image',
+  },
+  {
+    id: 'os:windows-8',
+    category: 'os',
+    name: 'Windows 8.1 Enterprise',
+    description: 'Windows 8.1 Enterprise в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+    icon: 'windows-8',
+    group: 'Операционные системы',
+    image: 'dockurr/windows:latest',
+    sizeLabel: '~3.7 GB (ISO при первом запуске)',
+    kind: 'image',
+  },
+  {
+    id: 'os:windows-10',
+    category: 'os',
+    name: 'Windows 10 Pro',
+    description: 'Windows 10 Pro в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+    icon: 'windows-10',
+    group: 'Операционные системы',
+    image: 'dockurr/windows:latest',
+    sizeLabel: '~5.7 GB (ISO при первом запуске)',
     kind: 'image',
   },
   {
@@ -1214,7 +1247,7 @@ read_input() {
   elif [[ -t 0 ]]; then
     read -r -p "$prompt" out || out=""
   fi
-  printf '%s\n' "$out"
+  printf '%s\\n' "$out"
 }
 
 pick_port() {
@@ -1371,7 +1404,7 @@ fi
 
 step "6/9 — Модули панели (образы ОС)"
 if [[ "$PRELOAD_OS" == "1" ]] && command -v docker >/dev/null 2>&1; then
-  IMAGES=( "dorowu/ubuntu-desktop-lxde-vnc:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockur/windows:xp" )
+  IMAGES=( "accetto/ubuntu-vnc-xfce-g3:latest" "ghcr.io/linuxserver/webtop:debian-xfce" "kasmweb/kali-rolling-desktop:1.16.0" "ghcr.io/linuxserver/webtop:alpine-kde" "dockurr/windows:latest" )
   for img in "\${IMAGES[@]}"; do
     if docker image inspect "$img" >/dev/null 2>&1; then
       ok "Образ уже загружен: $img"
