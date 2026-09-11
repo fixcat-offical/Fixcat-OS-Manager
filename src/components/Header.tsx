@@ -86,6 +86,11 @@ export const Header: React.FC<HeaderProps> = ({
           title: 'Настройки панели',
           subtitle: 'Конфигурация панели, Docker, обновления',
         };
+      case 'nodes':
+        return {
+          title: 'Связанные ПК (Узлы)',
+          subtitle: 'Интеграция нескольких панелей по API',
+        };
       case 'hardware':
         return {
           title: 'Системное оборудование',

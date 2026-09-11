@@ -745,6 +745,58 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </ul>
         )}
       </div>
+
+      {/* Connected Remote Nodes */}
+      {systemInfo?.nodes && systemInfo.nodes.length > 0 && (
+        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Network className="w-4 h-4 text-indigo-400" />
+              Подключённые узлы
+            </h3>
+            <span className="text-[11px] text-slate-500">{systemInfo.nodes.filter((n) => n.status?.online).length}/{systemInfo.nodes.length} онлайн</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {systemInfo.nodes.map((node) => {
+              const online = !!node.status?.online;
+              const sys = node.status?.system;
+              const memMb = sys?.memory ? Math.round(sys.memory.used / 1048576) : null;
+              const memTotalMb = sys?.memory ? Math.round(sys.memory.total / 1048576) : null;
+              return (
+                <div key={node.id} className={`p-4 rounded-xl border text-xs transition-colors ${online ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/50 border-slate-800/50 opacity-70'}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                    <span className="font-bold text-white truncate">{node.name}</span>
+                    <span className="ml-auto font-mono text-[10px] text-slate-500">{node.ip}:{node.port}</span>
+                  </div>
+                  {online && sys ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">CPU</span>
+                        <span className="text-slate-200 font-mono">{sys.cpus?.count || '?'} cores</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">RAM</span>
+                        <span className="text-slate-200 font-mono">{memMb ?? '?'} / {memTotalMb ?? '?'} MB</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Контейнеры</span>
+                        <span className="text-slate-200 font-mono">{node.status?.runningCount ?? 0}/{node.status?.containerCount ?? 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Aптайм</span>
+                        <span className="text-slate-200 font-mono">{sys.uptime ? `${Math.floor(sys.uptime/86400)}д ${Math.floor((sys.uptime%86400)/3600)}ч` : '—'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 text-center py-2">Нет ответа</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

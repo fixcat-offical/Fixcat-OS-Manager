@@ -96,6 +96,8 @@ export interface SystemInfo {
     refreshInterval: number;
     autoDetectNoVnc: boolean;
   };
+  apiKey?: string | null;
+  nodes?: NodeItem[];
 }
 
 export interface MetricHistoryPoint {
@@ -135,4 +137,25 @@ export interface UserRecord {
   role?: 'admin' | 'user';
   status?: 'active' | 'disabled';
   lastLoginAt?: string;
+}
+
+export interface NodeStatus {
+  online: boolean;
+  checkedAt: string | null;
+  system?: SystemInfo;
+  containers?: ContainerItem[];
+  containerCount?: number;
+  runningCount?: number;
+  version?: string;
+  hostname?: string;
+}
+
+export interface NodeItem {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  apiKey: string;
+  createdAt: string;
+  status?: NodeStatus;
 }

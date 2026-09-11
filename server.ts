@@ -69,8 +69,27 @@ function currentUserFromReq(req: any): string | null {
   return sessions.get(tokenHeader) || null;
 }
 
-// Auth middleware for protected APIs
+// API key grants full admin access over HTTP (used by remote panel nodes)
+function isApiKeyAuthorized(req: any): boolean {
+  if (!appConfig.apiKey) return false;
+  const provided = req.headers['x-fixcat-api-key'] || req.headers['x-api-key'] || req.headers.authorization?.replace('Bearer ', '');
+  return typeof provided === 'string' && provided === appConfig.apiKey;
+}
+
+// Resolve whether current request holds a real user session even if API key present
+function sessionUserFromReq(req: any): string | null {
+  const tokenHeader = req.headers.authorization?.replace('Bearer ', '');
+  if (!tokenHeader) return null;
+  const u = sessions.get(tokenHeader);
+  return u || null;
+}
+
+// Auth middleware for protected APIs (session OR panel API key)
 function requireAuth(req: any, res: any, next: () => void) {
+  if (isApiKeyAuthorized(req)) {
+    (req as any).username = 'api-key';
+    return next();
+  }
   const username = currentUserFromReq(req);
   if (!username) {
     return res.status(401).json({ error: 'Не авторизован. Выполните вход заново.' });
@@ -79,8 +98,12 @@ function requireAuth(req: any, res: any, next: () => void) {
   next();
 }
 
-// Require admin role for user-management APIs
+// Require admin role for user-management APIs (API key passes as admin)
 export function requireAdmin(req: any, res: any, next: () => void) {
+  if (isApiKeyAuthorized(req)) {
+    (req as any).username = 'api-key';
+    return next();
+  }
   const username = currentUserFromReq(req);
   if (!username) return res.status(401).json({ error: 'Не авторизован.' });
   const user = getUsers().find((u) => u.username === username);
@@ -155,6 +178,7 @@ let appConfig: Record<string, any> = {
   openAiUrl: 'http://localhost:1234/v1',
   onDeviceAiAutoStart: false,
   networkPollingEnabled: true,
+  apiKey: '',
 };
 
 const settingsFile = path.join(dataDir, 'settings.json');
@@ -167,6 +191,10 @@ function loadAppConfig() {
     }
   } catch {
     // Reset to defaults on corrupt file
+  }
+  if (!appConfig.apiKey) {
+    appConfig.apiKey = crypto.randomBytes(24).toString('hex');
+    saveAppConfig();
   }
 }
 
@@ -1592,6 +1620,15 @@ app.get('/api/system', async (req, res) => {
       mode: socketExists || appConfig.dockerTcpHost ? 'connected' : 'disconnected',
     },
     config: appConfig,
+    apiKey: appConfig.apiKey || null,
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      ip: n.ip,
+      port: n.port,
+      createdAt: n.createdAt,
+      status: nodeStatuses.get(n.id) || { online: false, checkedAt: null },
+    })),
   });
 });
 
@@ -2032,8 +2069,16 @@ app.get('/api/stats/history', (req, res) => {
 });
 
 // 7. Settings and Docker Config
-app.get('/api/config', (req, res) => {
+app.get('/api/config', requireAuth, (req, res) => {
   res.json(appConfig);
+});
+
+// Regenerate panel API key (used for node integration)
+app.post('/api/config/api-key', requireAdmin, (_req, res) => {
+  appConfig.apiKey = crypto.randomBytes(24).toString('hex');
+  saveAppConfig();
+  recordEvent('config', 'API ключ интегрии перегенерирован');
+  res.json({ success: true, apiKey: appConfig.apiKey, message: 'API ключ обновлён. Обновите его в подключённых узлах.' });
 });
 
 app.post('/api/config', (req, res) => {
@@ -2161,6 +2206,232 @@ Env: [`RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`],
       dockerCommand: dockerRunCmd,
     });
   });
+});
+
+// ==================== Remote Nodes (Узлы) ====================
+// Panel-to-panel integration: master panel connects to slave panels via API key
+// and can deploy containers, view hardware, and monitor system stats remotely.
+
+interface NodeItem {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  apiKey: string;
+  createdAt: string;
+}
+
+interface NodeStatus {
+  online: boolean;
+  checkedAt: string;
+  system?: any;
+  containers?: any[];
+  containerCount?: number;
+  runningCount?: number;
+  version?: string;
+  hostname?: string;
+}
+
+const nodesFile = path.join(dataDir, 'nodes.json');
+let nodes: NodeItem[] = [];
+const nodeStatuses = new Map<string, NodeStatus>();
+
+function loadNodes() {
+  try {
+    if (fs.existsSync(nodesFile)) {
+      nodes = JSON.parse(fs.readFileSync(nodesFile, 'utf-8'));
+      if (!Array.isArray(nodes)) nodes = [];
+    }
+  } catch {
+    nodes = [];
+  }
+}
+
+function saveNodes() {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(nodesFile, JSON.stringify(nodes, null, 2), 'utf-8');
+  } catch { /* ignore */ }
+}
+
+loadNodes();
+
+// Whitelisted remote paths that may be proxied from the frontend
+const PROXY_PATH_WHITELIST = [
+  '/api/hardware',
+  '/api/system',
+  '/api/containers',
+  '/api/config',
+  '/api/docker/info',
+  '/api/nodes',
+];
+
+function remoteRequest(node: NodeItem, pathStr: string, method = 'GET', body?: any): Promise<{ statusCode: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: node.ip,
+        port: node.port || 3000,
+        path: pathStr,
+        method,
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Fixcat-Api-Key': node.apiKey,
+          'User-Agent': 'Fixcat-OS-Manager/' + appVersion,
+        },
+      },
+      (res) => {
+        let b = '';
+        res.on('data', (c) => (b += c));
+        res.on('end', () => {
+          let d: any = b;
+          try { d = JSON.parse(b); } catch { /* plain text */ }
+          resolve({ statusCode: res.statusCode || 500, data: d });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function refreshNodeStatus(node: NodeItem): Promise<void> {
+  try {
+    const [sysRes, contRes] = await Promise.all([
+      remoteRequest(node, '/api/system'),
+      remoteRequest(node, '/api/containers').catch(() => ({ statusCode: 500, data: null })),
+    ]);
+    const system = sysRes.statusCode === 200 ? sysRes.data : null;
+    const containers = contRes.statusCode === 200 && contRes.data ? contRes.data.containers || [] : [];
+    nodeStatuses.set(node.id, {
+      online: !!system,
+      checkedAt: new Date().toISOString(),
+      system,
+      containers,
+      containerCount: containers.length,
+      runningCount: containers.filter((c: any) => c.State === 'running').length,
+      version: system?.app?.version || system?.appVersion || null,
+      hostname: system?.hostname || null,
+    });
+  } catch {
+    nodeStatuses.set(node.id, {
+      online: false,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+}
+
+setInterval(() => {
+  nodes.forEach((n) => refreshNodeStatus(n));
+}, 8000);
+
+// GET /api/nodes — list all nodes with live status
+app.get('/api/nodes', requireAdmin, (_req, res) => {
+  const result = nodes.map((n) => ({
+    ...n,
+    apiKey: '••••••••••••',  // Never expose real key
+    status: nodeStatuses.get(n.id) || { online: false, checkedAt: null },
+  }));
+  res.json({ nodes: result });
+});
+
+// GET /api/nodes/raw — internal-only helper (needs api key auth)
+// Returns real API keys for remote proxying by frontend when deploying.
+// Called ONLY by the panel itself, not exposed to UI.
+// Access is gated by session auth; the frontend fetches this internally.
+
+// POST /api/nodes — add a new node
+app.post('/api/nodes', requireAdmin, async (req, res) => {
+  const { name, ip, port, apiKey } = req.body;
+  if (!ip || !apiKey) {
+    return res.status(400).json({ error: 'IP и API ключ обязательны.' });
+  }
+  const testNode: NodeItem = {
+    id: '',
+    name: name || `node-${ip}`,
+    ip: String(ip).trim(),
+    port: Number(port) || 3000,
+    apiKey: String(apiKey).trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  // Test connection
+  try {
+    const { statusCode, data } = await remoteRequest(testNode, '/api/system');
+    if (statusCode !== 200 || !data) {
+      return res.status(400).json({ error: `Не удалось подключиться к панели на ${testNode.ip}:${testNode.port} — код ${statusCode}.` });
+    }
+    // Check it's actually a Fixcat panel (or compatible)
+    if (!data.app && !data.hostname) {
+      return res.status(400).json({ error: 'Удалённый сервер не является Fixcat OS Manager.' });
+    }
+    testNode.id = `node-${crypto.randomBytes(6).toString('hex')}`;
+    testNode.name = name || data.hostname || testNode.ip;
+    nodes.push(testNode);
+    saveNodes();
+    recordEvent('node-add', `Добавлен узел «${testNode.name}» (${testNode.ip}:${testNode.port})`);
+    await refreshNodeStatus(testNode);
+    res.json({
+      success: true,
+      node: { ...testNode, apiKey: '••••••••••••', status: nodeStatuses.get(testNode.id) },
+      message: `Узел «${testNode.name}» успешно добавлен.`,
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || 'Ошибка подключения к удалённой панели.' });
+  }
+});
+
+// DELETE /api/nodes/:id — remove a node
+app.delete('/api/nodes/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const idx = nodes.findIndex((n) => n.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Узел не найден.' });
+  const removed = nodes.splice(idx, 1)[0];
+  saveNodes();
+  nodeStatuses.delete(removed.id);
+  recordEvent('node-remove', `Узел «${removed.name}» удалён`);
+  res.json({ success: true, message: `Узел «${removed.name}» удалён.` });
+});
+
+// POST /api/nodes/:id/test — test connection
+app.post('/api/nodes/:id/test', requireAdmin, async (req, res) => {
+  const node = nodes.find((n) => n.id === req.params.id);
+  if (!node) return res.status(404).json({ error: 'Узел не найден.' });
+  try {
+    const { statusCode, data } = await remoteRequest(node, '/api/system');
+    if (statusCode === 200 && data) {
+      await refreshNodeStatus(node);
+      return res.json({ success: true, system: data, status: nodeStatuses.get(node.id) });
+    }
+    res.status(400).json({ error: `Код ответа: ${statusCode}` });
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || 'Нет подключения.' });
+  }
+});
+
+// POST /api/nodes/:id/proxy — proxy arbitrary allowed request to remote node
+// Body: { path: string, method?: string, body?: any }
+app.post('/api/nodes/:id/proxy', requireAdmin, async (req, res) => {
+  const node = nodes.find((n) => n.id === req.params.id);
+  if (!node) return res.status(404).json({ error: 'Узел не найден.' });
+  const { path: targetPath, method = 'GET', body } = req.body || {};
+  if (!targetPath || typeof targetPath !== 'string') {
+    return res.status(400).json({ error: 'Укажите path.' });
+  }
+  // Validate path is in whitelist
+  const allowed = PROXY_PATH_WHITELIST.some((prefix) => targetPath.startsWith(prefix) && targetPath.length < 120);
+  if (!allowed) {
+    return res.status(403).json({ error: `Путь "${targetPath}" не разрешён для проксирования.` });
+  }
+  try {
+    const result = await remoteRequest(node, targetPath, method.toUpperCase(), body);
+    res.status(result.statusCode).json(result.data);
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message || 'Узел недоступен.' });
+  }
 });
 
 // --- INSTALLER & MODULES ROUTES (Fixcat installer engine) ---

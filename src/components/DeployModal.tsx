@@ -22,6 +22,7 @@ import {
   KaliIcon,
   AlpineIcon,
 } from './icons/OSIcons';
+import { NodeItem } from '../types';
 
 interface DockerImage {
   id: string;
@@ -34,9 +35,10 @@ interface DockerImage {
 interface DeployModalProps {
   onClose: () => void;
   onDeploy: (config: any) => Promise<boolean | void>;
+  nodes?: NodeItem[];
 }
 
-export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) => {
+export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nodes }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('ubuntu');
   const [containerName, setContainerName] = useState(`ubuntu-desktop-${Math.floor(Math.random() * 89 + 10)}`);
   const [vncPort, setVncPort] = useState('6082');
@@ -44,6 +46,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
   const [cpuCores, setCpuCores] = useState('2');
   const [resolution, setResolution] = useState('1920x1080');
   const [restartPolicy, setRestartPolicy] = useState('no');
+  const [targetNode, setTargetNode] = useState('local');
 
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStep, setDeployStep] = useState<number>(0);
@@ -202,6 +205,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
 
     try {
       await onDeploy({
+        nodeId: targetNode,
         osType: isCustom ? 'custom' : selectedTemplate,
         image: isCustom ? resolvedImage : undefined,
         webPort: isCustom ? resolvedWebPort : undefined,
@@ -509,15 +513,39 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
             </pre>
           </div>
 
-          {/* Footer Actions */}
-          <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isDeploying}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Отмена
+          {/* Footer Actions — Target node selector + Deploy button */}
+          <div className="pt-3 space-y-3 border-t border-slate-800">
+            {/* Node target selector */}
+            {nodes && nodes.length > 0 && (
+              <div className="flex items-center gap-3">
+                <label className="text-[11px] text-slate-400 font-medium whitespace-nowrap">Развернуть на:</label>
+                <select
+                  value={targetNode}
+                  onChange={(e) => setTargetNode(e.target.value)}
+                  className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="local">Этот ПК (локально)</option>
+                  {nodes.filter((n) => n.status?.online).map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name} ({n.ip}:{n.port})
+                    </option>
+                  ))}
+                  {nodes.filter((n) => !n.status?.online).map((n) => (
+                    <option key={n.id} value={n.id} disabled>
+                      {n.name} — оффлайн
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isDeploying}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Отмена
             </button>
             <button
               type="submit"
@@ -536,6 +564,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy }) =
                 </>
               )}
             </button>
+          </div>
           </div>
         </form>
       </div>

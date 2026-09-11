@@ -15,11 +15,17 @@ import {
   Trash2,
   Power,
   PowerOff,
+  Network,
+  Wifi,
+  WifiOff,
+  Server,
 } from 'lucide-react';
+import { NodeItem } from '../types';
 
 interface HardwareViewProps {
   authToken: string | null;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+  nodes?: NodeItem[];
 }
 
 interface CpuCore {
@@ -48,11 +54,12 @@ interface SwapEntry {
   priority: number;
 }
 
-export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast }) => {
+export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast, nodes }) => {
   const [cpuInfo, setCpuInfo] = useState<{ cpus: CpuCore[]; availableGovernors: string[]; writable: boolean; model: string | null } | null>(null);
   const [fanInfo, setFanInfo] = useState<{ fans: FanInfo[]; thinkpad: { available: boolean; status: string | null } } | null>(null);
   const [swapInfo, setSwapInfo] = useState<{ swaps: SwapEntry[]; totalMb: number; usedMb: number; freeRootMb: number | null } | null>(null);
 
+  const [targetNode, setTargetNode] = useState('local');
   const [governor, setGovernor] = useState('');
   const [freqPerCore, setFreqPerCore] = useState<Record<string, number>>({});
   const [allCoreFreq, setAllCoreFreq] = useState('');
@@ -68,11 +75,34 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const authHeader = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
+  // Route hardware calls to local hardware module OR to a connected node via proxy
+  const hwApi = async (path: string, method = 'GET', body?: any) => {
+    if (targetNode === 'local') {
+      const res = await fetch(path, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, data };
+    }
+    const res = await fetch(`/api/nodes/${targetNode}/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify({ path, method, body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  };
+
+  const selectedNode = nodes?.find((n) => n.id === targetNode);
+  const isRemote = targetNode !== 'local';
+
   const fetchCpu = async () => {
     setLoading((p) => ({ ...p, cpu: true }));
     try {
-      const res = await fetch('/api/hardware/cpu');
-      const data = await res.json();
+      const { ok, data } = await hwApi('/api/hardware/cpu');
+      if (!ok) throw new Error(data.error);
       setCpuInfo(data);
       if (!governor && data.currentGovernor) setGovernor(data.currentGovernor);
     } catch {
@@ -84,8 +114,9 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
   const fetchFans = async () => {
     setLoading((p) => ({ ...p, fan: true }));
     try {
-      const res = await fetch('/api/hardware/fans');
-      setFanInfo(await res.json());
+      const { ok, data } = await hwApi('/api/hardware/fans');
+      if (!ok) throw new Error(data.error);
+      setFanInfo(data);
     } catch {
       showToast('Не удалось загрузить информацию о вентиляторах', 'error');
     }
@@ -95,8 +126,9 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
   const fetchSwap = async () => {
     setLoading((p) => ({ ...p, swap: true }));
     try {
-      const res = await fetch('/api/hardware/swap');
-      setSwapInfo(await res.json());
+      const { ok, data } = await hwApi('/api/hardware/swap');
+      if (!ok) throw new Error(data.error);
+      setSwapInfo(data);
     } catch {
       showToast('Не удалось загрузить информацию о swap', 'error');
     }
@@ -107,19 +139,14 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
     fetchCpu();
     fetchFans();
     fetchSwap();
-  }, []);
+  }, [targetNode]);
 
   // ---- CPU Actions ----
   const applyGovernor = async () => {
     if (!governor) return showToast('Выберите governor', 'error');
     try {
-      const res = await fetch('/api/hardware/cpu/governor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ governor }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/cpu/governor', 'POST', { governor });
+      if (!ok) throw new Error(data.error);
       showToast(data.message || 'Governor применён', 'success');
       fetchCpu();
     } catch (err: any) {
@@ -131,13 +158,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
     const mhz = Number(allCoreFreq);
     if (!mhz || mhz <= 0) return showToast('Введите частоту в МГц', 'error');
     try {
-      const res = await fetch('/api/hardware/cpu/frequency', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ mhz, cores: [] }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/cpu/frequency', 'POST', { mhz, cores: [] });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchCpu();
     } catch (err: any) {
@@ -151,13 +173,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
     for (const [coreStr, mhz] of entries) {
       const core = Number(coreStr);
       try {
-        const res = await fetch('/api/hardware/cpu/frequency', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeader },
-          body: JSON.stringify({ mhz, cores: [core] }),
-        });
-        const data = await res.json();
-        if (!res.ok) showToast(`Ядро ${core}: ${data.error}`, 'error');
+        const { ok, data } = await hwApi('/api/hardware/cpu/frequency', 'POST', { mhz, cores: [core] });
+        if (!ok) showToast(`Ядро ${core}: ${data.error}`, 'error');
         else showToast(`Ядро ${core}: ${mhz} МГц`, 'success');
       } catch (err: any) {
         showToast(`Ядро ${core}: ${err?.message}`, 'error');
@@ -168,16 +185,11 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const applyLimits = async () => {
     try {
-      const res = await fetch('/api/hardware/cpu/limits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({
-          minMhz: minMhz ? Number(minMhz) : null,
-          maxMhz: maxMhz ? Number(maxMhz) : null,
-        }),
+      const { ok, data } = await hwApi('/api/hardware/cpu/limits', 'POST', {
+        minMhz: minMhz ? Number(minMhz) : null,
+        maxMhz: maxMhz ? Number(maxMhz) : null,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!ok) throw new Error(data.error);
       showToast(data.message || 'Лимиты применены', 'success');
       fetchCpu();
     } catch (err: any) {
@@ -190,13 +202,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
     const key = `${hwmon}:${channel}`;
     const percent = pwmSettings[key] ?? 50;
     try {
-      const res = await fetch('/api/hardware/fans/pwm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ hwmon, channel, percent }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/fans/pwm', 'POST', { hwmon, channel, percent });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchFans();
     } catch (err: any) {
@@ -206,13 +213,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const setAutoFan = async (hwmon: string, channel: number) => {
     try {
-      const res = await fetch('/api/hardware/fans/pwm-auto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ hwmon, channel }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/fans/pwm-auto', 'POST', { hwmon, channel });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchFans();
     } catch (err: any) {
@@ -222,13 +224,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const applyThinkpadLevel = async (level: string) => {
     try {
-      const res = await fetch('/api/hardware/fans/thinkpad-level', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ level }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/fans/thinkpad-level', 'POST', { level });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchFans();
     } catch (err: any) {
@@ -241,13 +238,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
     const sizeMb = Number(swapCreateSize);
     if (!sizeMb || sizeMb <= 0) return showToast('Укажите размер', 'error');
     try {
-      const res = await fetch('/api/hardware/swap/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ sizeMb, path: swapCreatePath || '/swapfile', persist: swapCreatePersist }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/swap/create', 'POST', { sizeMb, path: swapCreatePath || '/swapfile', persist: swapCreatePersist });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchSwap();
     } catch (err: any) {
@@ -257,13 +249,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const toggleSwap = async (path: string, activate: boolean) => {
     try {
-      const res = await fetch(`/api/hardware/swap/${activate ? 'activate' : 'deactivate'}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ path }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi(`/api/hardware/swap/${activate ? 'activate' : 'deactivate'}`, 'POST', { path });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchSwap();
     } catch (err: any) {
@@ -273,13 +260,8 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
 
   const removeSwap = async (path: string) => {
     try {
-      const res = await fetch('/api/hardware/swap/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ path }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const { ok, data } = await hwApi('/api/hardware/swap/remove', 'POST', { path });
+      if (!ok) throw new Error(data.error);
       showToast(data.message, 'success');
       fetchSwap();
     } catch (err: any) {
@@ -305,6 +287,37 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
           title="Обновить">
           <RefreshCw className={`w-4 h-4 ${(loading.cpu || loading.fan || loading.swap) ? 'animate-spin text-blue-400' : ''}`} />
         </button>
+      </div>
+
+      {/* Node selector */}
+      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-white whitespace-nowrap">
+            <span className={`w-8 h-8 rounded-xl border flex items-center justify-center ${isRemote ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-blue-600/10 border-blue-500/30 text-blue-400'}`}>
+              {isRemote ? <Wifi className="w-4 h-4" /> : <Server className="w-4 h-4" />}
+            </span>
+            Управлять железом:
+          </div>
+          <select
+            value={targetNode}
+            onChange={(e) => setTargetNode(e.target.value)}
+            className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="local">🖥️ Этот компьютер (локально)</option>
+            {nodes?.filter((n) => n.status?.online).map((n) => (
+              <option key={n.id} value={n.id}>🖥️ {n.name} ({n.ip}:{n.port})</option>
+            ))}
+            {nodes?.filter((n) => !n.status?.online).map((n) => (
+              <option key={n.id} value={n.id} disabled>{n.name} — оффлайн</option>
+            ))}
+          </select>
+        </div>
+        {isRemote && (
+          <p className="mt-2 text-[11px] text-emerald-300 flex items-center gap-1.5">
+            <Wifi className="w-3 h-3" /> Управляем удалённым ПК «{selectedNode?.name}» ({selectedNode?.ip}:{selectedNode?.port}). Частоты и вентиляторы применяются на нём через API.
+            {!selectedNode?.status?.online && <span className="text-amber-300">Узел может быть недоступен.</span>}
+          </p>
+        )}
       </div>
 
       {/* ===================== CPU SECTION ===================== */}

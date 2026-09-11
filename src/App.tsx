@@ -15,6 +15,7 @@ import { ModulesView } from './components/ModulesView';
 import { AutostartView } from './components/AutostartView';
 import { UsersView } from './components/UsersView';
 import { HardwareView } from './components/HardwareView';
+import { NodesView } from './components/NodesView';
 import { AuthView } from './components/AuthView';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
@@ -201,14 +202,24 @@ export default function App() {
     }
   };
 
-  // Full Automated Deploy handler
+  // Full Automated Deploy handler (local or remote node)
   const handleDeployContainer = async (config: any) => {
+    const { nodeId, ...payload } = config || {};
     try {
-      const res = await fetch('/api/containers/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
+      let res: Response;
+      if (nodeId && nodeId !== 'local') {
+        res = await fetch(`/api/nodes/${nodeId}/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+          body: JSON.stringify({ path: '/api/containers/create', method: 'POST', body: payload }),
+        });
+      } else {
+        res = await fetch('/api/containers/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
       const data = await res.json();
       if (res.ok) {
         showToast(data.message || 'ОС успешно развернута и запущена!', 'success');
@@ -314,6 +325,13 @@ export default function App() {
             />
           )}
 
+          {currentTab === 'nodes' && (
+            <NodesView
+              authToken={authToken}
+              showToast={showToast}
+            />
+          )}
+
           {currentTab === 'resources' && (
             <ResourceMonitorView
               containers={containers}
@@ -366,6 +384,7 @@ export default function App() {
             <HardwareView
               authToken={authToken}
               showToast={showToast}
+              nodes={systemInfo?.nodes || []}
             />
           )}
         </main>
@@ -390,6 +409,7 @@ export default function App() {
         <DeployModal
           onClose={() => setIsDeployModalOpen(false)}
           onDeploy={handleDeployContainer}
+          nodes={systemInfo?.nodes || []}
         />
       )}
 

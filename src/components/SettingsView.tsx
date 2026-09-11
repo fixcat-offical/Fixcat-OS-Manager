@@ -327,6 +327,55 @@ docker run -d \\
         </div>
       </form>
 
+      {/* API Key for Node Integration */}
+      {authToken && (
+        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <Globe className="w-4 h-4 text-indigo-400" />
+              API для интеграции (Узлы)
+            </h3>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Этот API ключ используется для подключения других панелей Fixcat OS Manager в качестве <b className="text-slate-200">узлов</b>. Скопируйте его на вкладке <b className="text-slate-200">Связанные ПК</b> на втором устройстве.
+          </p>
+          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5">
+            <code className="flex-1 text-[11px] text-slate-300 font-mono break-all select-all">{systemInfo?.apiKey || '••••••••'}</code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(systemInfo?.apiKey || '');
+              }}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0 cursor-pointer"
+              title="Скопировать ключ"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={async () => {
+                if (!window.confirm('Перегенерировать API ключ? Все подключённые узлы потеряют доступ, пока не обновите ключ на них.')) return;
+                try {
+                  const res = await fetch('/api/config/api-key', {
+                    method: 'POST',
+                    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                    showToast('API ключ обновлён! Обновите ключ на подключённых узлах.', 'info');
+                    window.location.reload();
+                  }
+                } catch {}
+              }}
+              className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 text-[11px] font-semibold shrink-0 cursor-pointer"
+            >
+              Перегенерировать
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
+            <Info className="w-3 h-3" /> Для доступа к API из других панелей используйте заголовок <code className="bg-slate-800 px-1 rounded text-slate-400">X-Fixcat-Api-Key</code> или <code className="bg-slate-800 px-1 rounded text-slate-400">Authorization: Bearer &lt;ключ&gt;</code>.
+          </p>
+        </div>
+      )}
+
       {/* Panel Settings (25 settings in groups) */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
         <h3 className="font-bold text-white text-sm uppercase tracking-wider flex items-center gap-2 mb-3">

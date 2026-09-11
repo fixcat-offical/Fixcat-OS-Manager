@@ -11,6 +11,7 @@ import {
   Rocket,
   Users,
   Cpu,
+  Network,
   X,
 } from 'lucide-react';
 import { FixcatLogo } from './icons/OSIcons';
@@ -68,6 +69,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Server,
       badge: `${runningCount}/${countTotal}`,
       badgeColor: runningCount > 0 ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-slate-800 text-slate-400',
+    },
+    {
+      id: 'nodes',
+      label: 'Связанные ПК (Узлы)',
+      sublabel: 'Подключение второго устройства',
+      icon: Network,
+      badge: null,
     },
     {
       id: 'resources',
