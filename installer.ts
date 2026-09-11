@@ -1381,17 +1381,35 @@ else
 fi
 
 step "10/10 — Готово"
-LOCAL_IP=$(hostname -I 2>/dev/null | tr ' ' '\\n' | grep -Ev '^$' | head -1)
+LOCAL_IPS=($(hostname -I 2>/dev/null))
+PUBLIC_IP=""
+PUBLIC_IP=$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null || curl -fsS --max-time 4 https://ifconfig.me 2>/dev/null || echo "")
 echo
 ok "Установка Fixcat OS Manager завершена!"
 echo
-echo "   🌐 Веб-панель:     http://\${LOCAL_IP:-<server-ip>}:$PORT"
-echo "   📁 Установка:      $INSTALL_DIR"
-echo "   📦 Данные:         $DATA_DIR"
+echo -e "   🌐 Ссылки для входа в веб-панель (порт $PORT):"
 echo
-echo "   ⚙️  Управление:    systemctl status fixcat   |  systemctl restart fixcat"
-echo "   📜 Логи:           journalctl -u fixcat -f"
+echo -e "     • Локально (этот сервер):  http://localhost:$PORT"
+for ip in $\{LOCAL_IPS[@]\}; do
+  if [[ "$ip" == *:* ]]; then continue; fi
+  echo -e "     • Локальная сеть:            http://$ip:$PORT"
+done
+if [[ -n "$PUBLIC_IP" ]]; then
+  echo -e "     • Интернет (если проброшен): http://$PUBLIC_IP:$PORT"
+fi
 echo
+echo -e "   📁 Установка:      $INSTALL_DIR"
+echo -e "   📦 Данные:         $DATA_DIR"
+echo
+echo -e "   ⚙️  Управление:    systemctl status fixcat   |  systemctl restart fixcat"
+echo -e "   📜 Логи:           journalctl -u fixcat -f"
+echo -e "   🛡️  Файрвол:       sudo ufw allow $PORT/tcp   (при недоступности извне)"
+echo
+if [[ -z "$PUBLIC_IP" ]]; then
+  echo -e "   💡 Внешний IP не определился (нет интернета/ICMP) — проверьте снаружи:"
+  echo -e "      curl -fsS https://ipinfo.io/ip ;   затем http://<этот-ip>:$PORT"
+  echo
+fi
 `;
 }
 
