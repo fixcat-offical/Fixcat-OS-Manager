@@ -1875,7 +1875,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
   if (customImageName) {
     image = customImageName;
   } else {
-    if (windowsVersion) image = 'dockurr/windows';
+    if (windowsVersion) image = 'dockurr/windows:6.04';
     if (osType === 'ubuntu') image = 'accetto/ubuntu-vnc-xfce-g3';
     if (osType === 'debian') image = 'ghcr.io/linuxserver/webtop:debian-xfce';
     if (osType === 'kali') image = 'kasmweb/kali-rolling-desktop:1.16.0';

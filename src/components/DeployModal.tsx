@@ -125,7 +125,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       name: 'Windows XP Professional SP3',
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Классика',
-      image: 'dockurr/windows:latest',
+      image: 'dockurr/windows:6.04',
       webPort: 8006,
       vncPort: 5900,
       defaultPort: '8007',
@@ -137,7 +137,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       name: 'Windows 7 Ultimate',
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Windows',
-      image: 'dockurr/windows:latest',
+      image: 'dockurr/windows:6.04',
       webPort: 8006,
       vncPort: 5900,
       defaultPort: '8008',
@@ -149,7 +149,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       name: 'Windows 8.1 Enterprise',
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Windows',
-      image: 'dockurr/windows:latest',
+      image: 'dockurr/windows:6.04',
       webPort: 8006,
       vncPort: 5900,
       defaultPort: '8009',
@@ -161,7 +161,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       name: 'Windows 10 Pro',
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Windows',
-      image: 'dockurr/windows:latest',
+      image: 'dockurr/windows:6.04',
       webPort: 8006,
       vncPort: 5900,
       defaultPort: '8010',
@@ -173,7 +173,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       name: 'Windows 11 Pro',
       renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
       badge: 'Windows',
-      image: 'dockurr/windows:latest',
+      image: 'dockurr/windows:6.04',
       webPort: 8006,
       vncPort: 5900,
       defaultPort: '8011',
@@ -279,7 +279,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   };
   const isWindowsTemplate = !isCustom && selectedTemplate.startsWith('windows-');
   const dockerCmd = isWindowsTemplate
-    ? `docker run -it --rm --name windows -e "VERSION=${WINDOWS_VERSIONS[selectedTemplate]}" -p 8006:8006 --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v "\${PWD:-.}/windows:/storage" --stop-timeout 120 docker.io/dockurr/windows`
+    ? `docker run -it --rm --name windows -e "VERSION=${WINDOWS_VERSIONS[selectedTemplate]}" -p 8006:8006 --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v "\${PWD:-.}/windows:/storage" --stop-timeout 120 docker.io/dockurr/windows:6.04`
     : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
   const handleCopyCmd = async () => {
@@ -562,9 +562,10 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                   </label>
                 </div>
                 <p className="text-[10px] text-amber-400/90 leading-relaxed">
-                  Включено = обязательное использование видеокарты: если у вас нет /dev/dri, ядро ниже
-                  Linux 6.13 или образ dockur v6.05 (битый GPU-путь) — запуск не начнётся, придёт ошибка.
-                  Тихого программного рендеринга при включённом GPU не будет.
+                  Windows ставится с пином dockurr/windows:6.04 (рабочий GPU-путь; в 6.05/latest он сломан).
+                  GPU-ускорение даёт Virtual VirtIO GPU через egl-headless — настоящая видеокарта хоста.
+                  Внутри Windows ускорение появится после авто-установки драйвера virtio-gpu (энв. DRIVERS,
+                  обычно после первой перезагрузки; в dxdiag будет VirtIO GPU, а не Basic Display Adapter).
                 </p>
               </div>
             </div>
