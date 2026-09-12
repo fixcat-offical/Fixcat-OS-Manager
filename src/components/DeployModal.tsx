@@ -268,7 +268,17 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const resolvedImage = (isCustom ? (customImageSelect || customImage || '').trim() : selectedTplObj.image) || 'user/image:latest';
   const resolvedWebPort = isCustom ? (parseInt(customWebPort, 10) || 80) : selectedTplObj.webPort;
   const resolvedVncPort = isCustom ? (parseInt(customVncPort, 10) || 5900) : selectedTplObj.vncPort;
-  const dockerCmd = `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
+  const WINDOWS_VERSIONS: Record<string, string> = {
+    'windows-xp': 'xp',
+    'windows-7': '7u',
+    'windows-8': '8e',
+    'windows-10': '10',
+    'windows-11': '11',
+  };
+  const isWindowsTemplate = !isCustom && selectedTemplate.startsWith('windows-');
+  const dockerCmd = isWindowsTemplate
+    ? `docker run -it --rm --name windows -e "VERSION=${WINDOWS_VERSIONS[selectedTemplate]}" -p 8006:8006 --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v "\${PWD:-.}/windows:/storage" --stop-timeout 120 docker.io/dockurr/windows`
+    : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
   const handleCopyCmd = () => {
     navigator.clipboard.writeText(dockerCmd);
