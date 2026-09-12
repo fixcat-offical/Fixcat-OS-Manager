@@ -33,6 +33,7 @@ import {
   GitBranch,
 } from 'lucide-react';
 import { SystemInfo } from '../types';
+import { copyText } from '../lib/clipboard';
 
 interface DockerImage {
   id: string;
@@ -260,7 +261,7 @@ docker run -d \\
   node:20-alpine sh -c "npm start"`;
 
   const handleCopyScript = () => {
-    navigator.clipboard.writeText(laptopRunCommand);
+    copyText(laptopRunCommand);
     setCopiedScript(true);
     setTimeout(() => setCopiedScript(false), 2000);
   };
@@ -339,7 +340,7 @@ docker run -d \\
             <code className="flex-1 text-[11px] text-slate-300 font-mono break-all select-all">{systemInfo?.apiKey || '••••••••'}</code>
             <button
               onClick={() => {
-                navigator.clipboard.writeText(systemInfo?.apiKey || '');
+                copyText(systemInfo?.apiKey || '');
               }}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0 cursor-pointer"
               title="Скопировать ключ"

@@ -22,6 +22,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { NodeItem } from '../types';
+import { copyText } from '../lib/clipboard';
 
 interface NodesViewProps {
   authToken: string | null;
@@ -128,7 +129,7 @@ export const NodesView: React.FC<NodesViewProps> = ({ authToken, showToast }) =>
 
   const handleCopyApi = (node: NodeItem) => {
     // Real key is never sent to the UI; construct add-string from public fields.
-    navigator.clipboard.writeText(`${node.name} | ${node.ip}:${node.port}`);
+    copyText(`${node.name} | ${node.ip}:${node.port}`);
     setCopiedId(node.id);
     setTimeout(() => setCopiedId(null), 2000);
   };

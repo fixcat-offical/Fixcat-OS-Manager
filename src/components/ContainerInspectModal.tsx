@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ContainerItem } from '../types';
 import { getOSIcon } from './icons/OSIcons';
+import { copyText } from '../lib/clipboard';
 
 interface ContainerInspectModalProps {
   container: ContainerItem | null;
@@ -51,7 +52,7 @@ export const ContainerInspectModal: React.FC<ContainerInspectModalProps> = ({
   const jsonString = inspectData ? JSON.stringify(inspectData, null, 2) : '';
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(jsonString);
+    copyText(jsonString);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

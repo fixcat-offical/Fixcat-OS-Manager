@@ -27,6 +27,7 @@ import {
   ListChecks,
   Plus,
 } from 'lucide-react';
+import { copyText } from '../lib/clipboard';
 
 // ---------------------------------------------------------------------------
 // Types (mirror /api/installer/status)
@@ -247,10 +248,12 @@ export const InstallerExportView: React.FC<InstallerExportViewProps> = ({ authTo
   // Actions
   // -------------------------------------------------------------------------
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2500);
+  const copyToClipboard = async (text: string, label: string) => {
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2500);
+    }
   };
 
   const runDiagnostics = async () => {

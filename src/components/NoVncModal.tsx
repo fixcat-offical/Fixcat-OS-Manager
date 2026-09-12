@@ -16,6 +16,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
+import { copyText } from '../lib/clipboard';
 import { getOSIcon } from './icons/OSIcons';
 import { InteractiveDesktop } from './desktop/InteractiveDesktop';
 
@@ -34,8 +35,8 @@ export const NoVncModal: React.FC<NoVncModalProps> = ({ container, onClose }) =>
 
   const vncUrl = container.osInfo.vncUrl || `http://localhost:${container.osInfo.noVncPort || 6080}/`;
 
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(vncUrl);
+  const handleCopyUrl = async () => {
+    await copyText(vncUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
   };

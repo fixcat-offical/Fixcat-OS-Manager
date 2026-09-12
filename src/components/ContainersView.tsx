@@ -20,6 +20,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
+import { copyText } from '../lib/clipboard';
 import { getOSIcon } from './icons/OSIcons';
 import { ContainerInspectModal } from './ContainerInspectModal';
 
@@ -88,25 +89,11 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
       return sortAsc ? cmp : -cmp;
     });
 
-  const handleCopyLink = (c: ContainerItem) => {
+  const handleCopyLink = async (c: ContainerItem) => {
     const url = buildContainerUrl(c, remoteIp);
-    navigator.clipboard.writeText(url).then(
-      () => {
-        setCopiedId(c.Id);
-        setTimeout(() => setCopiedId((prev) => (prev === c.Id ? null : prev)), 1600);
-      },
-      () => {
-        // clipboard fallback
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        setCopiedId(c.Id);
-        setTimeout(() => setCopiedId((prev) => (prev === c.Id ? null : prev)), 1600);
-      },
-    );
+    await copyText(url);
+    setCopiedId(c.Id);
+    setTimeout(() => setCopiedId((prev) => (prev === c.Id ? null : prev)), 1600);
   };
 
   // Batch toggle

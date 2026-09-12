@@ -14,6 +14,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
+import { copyText } from '../lib/clipboard';
 import { getOSIcon } from './icons/OSIcons';
 import { InteractiveDesktop } from './desktop/InteractiveDesktop';
 
@@ -42,8 +43,8 @@ export const NoVncFullView: React.FC<NoVncFullViewProps> = ({
 
   const selectedContainer = osContainers.find((c) => c.Id === activeId) || osContainers[0];
 
-  const handleCopyUrl = (url: string) => {
-    navigator.clipboard.writeText(url);
+  const handleCopyUrl = async (url: string) => {
+    await copyText(url);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
   };

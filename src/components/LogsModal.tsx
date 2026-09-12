@@ -8,6 +8,7 @@ import {
   Download,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
+import { copyText } from '../lib/clipboard';
 
 interface LogsModalProps {
   container: ContainerItem | null;
@@ -39,10 +40,12 @@ export const LogsModal: React.FC<LogsModalProps> = ({ container, onClose, api })
     fetchLogs();
   }, [container.Id]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(logs);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const ok = await copyText(logs);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleDownload = () => {

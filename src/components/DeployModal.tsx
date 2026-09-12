@@ -23,6 +23,7 @@ import {
   AlpineIcon,
 } from './icons/OSIcons';
 import { NodeItem } from '../types';
+import { copyText } from '../lib/clipboard';
 
 interface DockerImage {
   id: string;
@@ -280,10 +281,12 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
     ? `docker run -it --rm --name windows -e "VERSION=${WINDOWS_VERSIONS[selectedTemplate]}" -p 8006:8006 --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v "\${PWD:-.}/windows:/storage" --stop-timeout 120 docker.io/dockurr/windows`
     : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
-  const handleCopyCmd = () => {
-    navigator.clipboard.writeText(dockerCmd);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyCmd = async () => {
+    const ok = await copyText(dockerCmd);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleAutoDeploy = async (e: React.FormEvent) => {
