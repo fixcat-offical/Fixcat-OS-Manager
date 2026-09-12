@@ -663,6 +663,124 @@ function getRegistryByContainerId(id: string): { id: string; entry: PortRegistry
   return null;
 }
 
+function getRegistryByContainerName(name: string): PortRegistryEntry | null {
+  for (const entry of portRegistry.values()) {
+    if (entry.name === name) return entry;
+  }
+  return null;
+}
+
+function windowsVersionFromContainerName(name: string): string | null {
+  const m = /^windows-(xp|7u|8e|10|11)(?:[._-]|$)/.exec(name || '');
+  return m ? m[1] : null;
+}
+
+function kernelAtLeast(major: number, minor: number): boolean {
+  const m = /^(\d+)\.(\d+)/.exec(os.release() || '');
+  if (!m) return false;
+  const M = Number(m[1]);
+  const m2 = Number(m[2]);
+  return M > major || (M === major && m2 >= minor);
+}
+
+// A hard guarantee for GPU-enabled Windows deploys: refuse to start unless the
+// host actually can drive hardware rendering (DRI node present, Linux 6.13+
+// for VirtIO host blobs/Venus, and a dockur image that is not the broken v6.05).
+async function assertGpuSupported(image: string, driExists: boolean): Promise<string | null> {
+  if (!driExists) {
+    return 'GPU-ускорение запрошено, но на хосте нет устройств /dev/dri (нет проброса видеокарты в Docker). Добавьте --device=/dev/dri/card0 и renderD128 или выключите GPU.';
+  }
+  if (!kernelAtLeast(6, 13)) {
+    return `GPU-ускорение требует Linux ядро 6.13+ (VirtIO host blobs / Venus). Текущее ядро: ${os.release()}`;
+  }
+  try {
+    const enc = encodeURIComponent(image);
+    const { statusCode, data } = await queryDockerSocket(`/images/${enc}/json`, 'GET');
+    if (statusCode === 200 && data?.Config?.Labels) {
+      const ver = String(data.Config.Labels['org.opencontainers.image.version'] || '').trim();
+      if (ver === '6.05') {
+        return 'Образ dockurr/windows (v6.05) не поддерживает GPU-ускорение (битый путь «-device std»). Обновите образ dockur или выключите GPU.';
+      }
+    }
+  } catch { /* image not pulled yet — allow, will be checked by the image itself */ }
+  return null;
+}
+
+// dockur downloads the ISO into /storage (named *.iso). On container removal we
+// keep that ISO in a per-version cache, so reinstalling the same Windows never
+// re-downloads it — and the rest of the storage disk (64 GB overlay) is freed.
+function seedWindowsIsoCache(storageDir: string, version: string) {
+  try {
+    const cache = path.join(dataDir, 'win-cache', version);
+    if (!fs.existsSync(cache)) return;
+    fs.mkdirSync(storageDir, { recursive: true });
+    for (const f of fs.readdirSync(cache)) {
+      if (!f.toLowerCase().endsWith('.iso')) continue;
+      const dst = path.join(storageDir, f);
+      if (!fs.existsSync(dst)) fs.copyFileSync(path.join(cache, f), dst);
+    }
+  } catch { /* best effort */ }
+}
+
+function cacheAndRemoveWindowsStorage(storageDir: string, version: string | null) {
+  try {
+    if (!fs.existsSync(storageDir)) return;
+    if (version) {
+      const cache = path.join(dataDir, 'win-cache', version);
+      fs.mkdirSync(cache, { recursive: true });
+      for (const f of fs.readdirSync(storageDir)) {
+        if (!f.toLowerCase().endsWith('.iso')) continue;
+        const dst = path.join(cache, f);
+        if (!fs.existsSync(dst)) fs.renameSync(path.join(storageDir, f), dst);
+      }
+    }
+    fs.rmSync(storageDir, { recursive: true, force: true });
+  } catch { /* best effort */ }
+}
+
+function removeWindowsStorageByName(name: string) {
+  if (!name) return;
+  cacheAndRemoveWindowsStorage(
+    path.join(dataDir, 'win-storage', name),
+    windowsVersionFromContainerName(name)
+  );
+}
+
+// Deletes leftover win-storage folders whose container is gone. Requires Docker
+// to be reachable (otherwise it does nothing) and skips anything younger than
+// 24h to never touch an in-progress deploy or a freshly renamed container.
+async function sweepOrphanedWindowsStorage() {
+  const root = path.join(dataDir, 'win-storage');
+  if (!fs.existsSync(root)) return;
+  let liveNames: string[] = [];
+  try {
+    const { statusCode, data } = await queryDockerSocket('/containers/json?all=1', 'GET');
+    if (statusCode !== 200 || !Array.isArray(data)) return;
+    liveNames = data.flatMap((c: any) => (c.Names || []).map((n: string) => n.replace(/^\//, '')));
+  } catch {
+    return;
+  }
+  const nameSet = new Set(liveNames);
+  const now = Date.now();
+  for (const dirName of fs.readdirSync(root)) {
+    const dir = path.join(root, dirName);
+    let st;
+    try {
+      st = fs.statSync(dir);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory()) continue;
+    if (nameSet.has(dirName)) continue;
+    if (getRegistryByContainerName(dirName)) continue;
+    if (now - st.mtimeMs < 24 * 60 * 60 * 1000) continue;
+    cacheAndRemoveWindowsStorage(dir, windowsVersionFromContainerName(dirName));
+  }
+}
+
+// Nightly-ish garbage collector for orphaned Windows storage folders.
+setInterval(sweepOrphanedWindowsStorage, 60 * 60 * 1000).unref();
+
 function savePortRegistry() {
   try {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -1394,6 +1512,10 @@ app.post('/api/containers/:id/action', requireAdmin, async (req, res) => {
           portRegistry.delete(reg.id);
           savePortRegistry();
         }
+        removeWindowsStorageByName(reg?.entry?.name || '');
+        try {
+          await queryDockerSocket('/images/prune', 'POST', { filters: { dangling: { true: true } } });
+        } catch { /* best effort */ }
       }
       recordEvent('action', `Действие «${action}» выполнено`, id.slice(0, 12), id);
       return res.json({ success: true, message: `Действие "${action}" успешно выполнено.` });
@@ -1779,12 +1901,17 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
     }
     const driExists = winDeviceList.some((d) => d.startsWith('/dev/dri/'));
     const gpuEnabled = req.body.gpu === true || (req.body.gpu !== false && driExists);
+    if (gpuEnabled) {
+      const gpuError = await assertGpuSupported(image, driExists);
+      if (gpuError) return res.status(400).json({ error: gpuError });
+    }
     extraEnv = ` -e VERSION=${windowsVersion} -e RAM_SIZE=${ramGb}G -e CPU_CORES=${cpuVal} -e GPU=${gpuEnabled ? 'Y' : 'N'} -e DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers`;
     extraDevices += ' --cap-add NET_ADMIN --stop-timeout 120';
     const storageDir = path.join(dataDir, 'win-storage', name);
     try {
       fs.mkdirSync(storageDir, { recursive: true });
     } catch { /* host fs may be readonly */ }
+    seedWindowsIsoCache(storageDir, windowsVersion);
     extraVolumes = ` -v "${storageDir}:/storage"`;
     rdpHostPort = await getAvailablePort(actualVncPort + 100);
   }

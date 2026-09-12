@@ -562,9 +562,9 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                   </label>
                 </div>
                 <p className="text-[10px] text-amber-400/90 leading-relaxed">
-                  Выключено по умолчанию: выложенный образ dockurr/windows (v6.05) имеет баг GPU-пути
-                  («-device std») и не даёт реального ускорения. Включите после обновления образа dockur —
-                  Windows должна увидеть VirtIO GPU после авто-установки драйверов (энв. DRIVERS).
+                  Включено = обязательное использование видеокарты: если у вас нет /dev/dri, ядро ниже
+                  Linux 6.13 или образ dockur v6.05 (битый GPU-путь) — запуск не начнётся, придёт ошибка.
+                  Тихого программного рендеринга при включённом GPU не будет.
                 </p>
               </div>
             </div>
