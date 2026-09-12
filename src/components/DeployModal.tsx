@@ -562,10 +562,11 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                   </label>
                 </div>
                 <p className="text-[10px] text-amber-400/90 leading-relaxed">
-                  Windows ставится с пином dockurr/windows:6.04 (рабочий GPU-путь; в 6.05/latest он сломан).
-                  GPU-ускорение даёт Virtual VirtIO GPU через egl-headless — настоящая видеокарта хоста.
-                  Внутри Windows ускорение появится после авто-установки драйвера virtio-gpu (энв. DRIVERS,
-                  обычно после первой перезагрузки; в dxdiag будет VirtIO GPU, а не Basic Display Adapter).
+                  Панель сама определит видеокарту хоста: для NVIDIA добавит --gpus all (нужен установленный
+                  NVIDIA Container Toolkit на сервере), для AMD/Intel пробросит /dev/dri. Образ Windows
+                  закреплён за dockurr/windows:6.04 (в 6.05/latest GPU-путь сломан). Ускорение внутри Windows
+                  появится после авто-установки драйвера virtio-gpu (энв. DRIVERS, обычно после перезагрузки;
+                  в dxdiag — VirtIO GPU, а не Basic Display Adapter).
                 </p>
               </div>
             </div>

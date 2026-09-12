@@ -683,15 +683,40 @@ function kernelAtLeast(major: number, minor: number): boolean {
   return M > major || (M === major && m2 >= minor);
 }
 
+// NVIDIA vs AMD/Intel DRI. NVIDIA must go through the container runtime
+// (--gpus all / NVIDIA Container Toolkit), /dev/dri devices are not enough.
+function hostGpuType(): 'nvidia' | 'dri' | null {
+  try {
+    const dir = '/dev/dri';
+    if (fs.existsSync(dir)) {
+      for (const f of fs.readdirSync(dir)) {
+        if (!/^renderD\d{3}$/.test(f)) continue;
+        try {
+          const vendor = String(fs.readFileSync(`/sys/class/drm/${f}/device/vendor`, 'utf8')).trim().toLowerCase();
+          if (vendor === '0x10de') return 'nvidia';
+          if (vendor === '0x8086' || vendor === '0x1002') return 'dri';
+        } catch { /* no sysfs entry for this node */ }
+      }
+    }
+  } catch { /* no /dev/dri at all */ }
+  if (fs.existsSync('/dev/nvidia0') || fs.existsSync('/usr/bin/nvidia-smi')) return 'nvidia';
+  return null;
+}
+
 // A hard guarantee for GPU-enabled Windows deploys: refuse to start unless the
-// host actually can drive hardware rendering (DRI node present, Linux 6.13+
+// host actually can drive hardware rendering (usable GPU present, Linux 6.13+
 // for VirtIO host blobs/Venus, and a dockur image that is not the broken v6.05).
-async function assertGpuSupported(image: string, driExists: boolean): Promise<string | null> {
-  if (!driExists) {
-    return 'GPU-ускорение запрошено, но на хосте нет устройств /dev/dri (нет проброса видеокарты в Docker). Добавьте --device=/dev/dri/card0 и renderD128 или выключите GPU.';
+async function assertGpuSupported(image: string, gpuType: 'nvidia' | 'dri' | null): Promise<string | null> {
+  if (!gpuType) {
+    return 'GPU-ускорение запрошено, но на хосте не найдена видеокарта (нет /dev/dri и нет NVIDIA-устройств). Добавьте GPU или выключите GPU.';
   }
   if (!kernelAtLeast(6, 13)) {
     return `GPU-ускорение требует Linux ядро 6.13+ (VirtIO host blobs / Venus). Текущее ядро: ${os.release()}`;
+  }
+  if (gpuType === 'nvidia') {
+    if (!fs.existsSync('/usr/bin/nvidia-smi') && !fs.existsSync('/proc/driver/nvidia/version')) {
+      return 'NVIDIA GPU найдена, но на хосте нет драйвера NVIDIA (nvidia-smi / /proc/driver/nvidia отсутствуют). Установите драйвер NVIDIA и NVIDIA Container Toolkit.';
+    }
   }
   try {
     const enc = encodeURIComponent(image);
@@ -1888,22 +1913,29 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
   const ramGb = Math.max(1, Math.ceil(ramMbVal / 1024));
   const cpuVal = parseInt(cpuCores, 10) || appConfig.defaultCpuCores || 2;
   let extraEnv = '';
+  let gpuEnabled = false;
+  let gpuType: 'nvidia' | 'dri' | null = null;
   let extraDevices = '';
   let extraVolumes = '';
   let rdpHostPort: number | null = null;
   const winDeviceList: string[] = [];
   if (isWindows) {
-    for (const dev of ['/dev/kvm', '/dev/net/tun', '/dev/dri/card0', '/dev/dri/renderD128']) {
-      if (fs.existsSync(dev)) {
+    const kvmTunDevices = ['/dev/kvm', '/dev/net/tun'];
+    gpuType = hostGpuType();
+    const driDevices = gpuType === 'dri' ? ['/dev/dri/card0', '/dev/dri/renderD128'] : [];
+    for (const dev of [...kvmTunDevices, ...driDevices]) {
+      if (fs.existsSync(dev) && !winDeviceList.includes(dev)) {
         winDeviceList.push(dev);
         extraDevices += ` --device=${dev}`;
       }
     }
-    const driExists = winDeviceList.some((d) => d.startsWith('/dev/dri/'));
-    const gpuEnabled = req.body.gpu === true || (req.body.gpu !== false && driExists);
+    gpuEnabled = req.body.gpu === true || (req.body.gpu !== false && !!gpuType);
     if (gpuEnabled) {
-      const gpuError = await assertGpuSupported(image, driExists);
+      const gpuError = await assertGpuSupported(image, gpuType);
       if (gpuError) return res.status(400).json({ error: gpuError });
+    }
+    if (gpuEnabled && gpuType === 'nvidia') {
+      extraDevices += ' --gpus all';
     }
     extraEnv = ` -e VERSION=${windowsVersion} -e RAM_SIZE=${ramGb}G -e CPU_CORES=${cpuVal} -e GPU=${gpuEnabled ? 'Y' : 'N'} -e DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers`;
     extraDevices += ' --cap-add NET_ADMIN --stop-timeout 120';
@@ -1948,7 +1980,14 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
           Image: image,
           Env: [
             ...(isWindows
-              ? [`VERSION=${windowsVersion}`, `RAM_SIZE=${ramGb}G`, `CPU_CORES=${cpuVal}`, `GPU=${winDeviceList.some((d) => d.startsWith('/dev/dri/')) && req.body.gpu !== false ? 'Y' : 'N'}`, 'DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers']
+              ? [
+                  `VERSION=${windowsVersion}`,
+                  `RAM_SIZE=${ramGb}G`,
+                  `CPU_CORES=${cpuVal}`,
+                  `GPU=${gpuEnabled ? 'Y' : 'N'}`,
+                  'DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers',
+                  ...(gpuEnabled && gpuType === 'nvidia' ? ['NVIDIA_VISIBLE_DEVICES=all', 'NVIDIA_DRIVER_CAPABILITIES=all', 'GPU=Y'] : []),
+                ]
               : []),
             `RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`,
           ],
@@ -1967,6 +2006,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
             },
             Memory: ramMbVal * 1024 * 1024,
             ...(isWindows && winDeviceList.length ? { Devices: winDeviceList.map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'mrw' })) } : {}),
+            ...(isWindows && gpuEnabled && gpuType === 'nvidia' ? { DeviceRequests: [{ Driver: 'nvidia', Count: -1, Capabilities: [['gpu']] }] } : {}),
           },
         };
 
