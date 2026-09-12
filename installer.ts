@@ -354,6 +354,17 @@ const MODULES: ModuleDef[] = [
     kind: 'image',
   },
   {
+    id: 'os:windows-11',
+    category: 'os',
+    name: 'Windows 11 Pro',
+    description: 'Windows 11 Pro в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+    icon: 'windows-11',
+    group: 'Операционные системы',
+    image: 'dockurr/windows:latest',
+    sizeLabel: '~7.9 GB ISO при первом запуске',
+    kind: 'image',
+  },
+  {
     id: 'os:debian',
     category: 'os',
     name: 'Debian 12 XFCE',

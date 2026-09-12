@@ -167,6 +167,18 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
       desc: 'Windows 10 Pro в контейнере dockur с встроенным noVNC (порт 8006). ISO скачивается автоматически.',
     },
     {
+      id: 'windows-11',
+      name: 'Windows 11 Pro',
+      renderIcon: () => <WindowsXPIcon className="w-6 h-6" />,
+      badge: 'Windows',
+      image: 'dockurr/windows:latest',
+      webPort: 8006,
+      vncPort: 5900,
+      defaultPort: '8011',
+      defaultRam: '4096',
+      desc: 'Windows 11 Pro в контейнере dockur — встроенный noVNC; ISO скачивается при первом запуске.',
+    },
+    {
       id: 'debian',
       name: 'Debian 12 Bookworm XFCE',
       renderIcon: () => <DebianIcon className="w-6 h-6" />,

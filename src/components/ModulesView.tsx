@@ -68,6 +68,7 @@ const moduleIcon = (icon: string, className = 'w-6 h-6') => {
     case 'windows-7':
     case 'windows-8':
     case 'windows-10':
+    case 'windows-11':
     case 'windows': return <WindowsXPIcon className={className} />;
     case 'debian': return <DebianIcon className={className} />;
     case 'kali': return <KaliIcon className={className} />;

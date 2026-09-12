@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
 [![Installer](https://img.shields.io/badge/installer-Fixcat--OS--Manager-6366F1?style=for-the-badge)](install.sh)
 
-**Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP/7/8.1/10, Debian, Kali, Alpine)
+**Разворачивайте полноценные виртуальные ОС** (Ubuntu, Windows XP/7/8.1/10/11, Debian, Kali, Alpine)
 **с рабочим столом через браузер (noVNC), следите за CPU/RAM/GPU и управляйте несколькими ПК** — всё в одном месте.
 
 ---
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/fixcat-offical/Fixcat-OS-Manager/ma
 | | |
 |---|---|
 | 🐳 **Менеджер контейнеров** | Создание, запуск, пауза, удаление ВМ и ОС, логи, порты, noVNC одним кликом |
-| 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP/7/8.1/10, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
+| 🖥️ **Виртуальные ОС** | Ubuntu Desktop, Windows XP/7/8.1/10/11, Debian XFCE, Kali GUI, Alpine — с доступом в браузере |
 | 📊 **Мониторинг** | Живые метрики CPU, RAM, Multi-GPU (NVIDIA), сеть, диск, история |
 | ⚡ **Профессиональный установщик** | Интерактивный пошаговый установщик с live-логом (SSE), выбор порта/директорий |
 | 📦 **Модули** | Каталог модулей: ОС-образы, Docker/Node/NVIDIA — установка в один клик |
@@ -171,6 +171,7 @@ PORT=3000 NODE_ENV=production node dist/server.js
 | 🪟 Windows 7 Ultimate | Windows 7 SP1 в QEMU + noVNC (ISO ~3.1GB, автозагрузка) | `dockurr/windows` |
 | 🪟 Windows 8.1 Enterprise | Windows 8.1 в QEMU + noVNC (ISO ~3.7GB, автозагрузка) | `dockurr/windows` |
 | 🪟 Windows 10 Pro | Windows 10 в QEMU + noVNC (ISO ~5.7GB, автозагрузка) | `dockurr/windows` |
+| 🪟 Windows 11 Pro | Windows 11 в QEMU + noVNC (ISO ~7.9GB, автозагрузка) | `dockurr/windows` |
 | 🐟 Debian 12 XFCE | Стабильный рабочий стол | `ghcr.io/linuxserver/webtop:debian-xfce` |
 | 🎯 Kali Linux GUI | Аудит безопасности | `kasmweb/kali-rolling-desktop:1.16.0` |
 | 🗻 Alpine Light GUI | Ультра-лёгкий (RAM ~300MB) | `ghcr.io/linuxserver/webtop:alpine-kde` |

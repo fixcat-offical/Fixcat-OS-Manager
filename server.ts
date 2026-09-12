@@ -496,35 +496,37 @@ function detectOSAndVnc(container: any) {
 
   const labelOs = (container.Labels && (container.Labels['io.fixcat.os'] || container.Labels['fixcat.os'])) || '';
   const containerEnv: string[] = Array.isArray(container.Config?.Env) ? container.Config.Env : [];
-  if (labelOs === 'windows' || ['windows-xp', 'windows-7', 'windows-8', 'windows-10'].includes(labelOs) || image.includes('windows') || lowerName.includes('windows') || lowerName.includes('winxp')) {
+  if (labelOs === 'windows' || ['windows-xp', 'windows-7', 'windows-8', 'windows-10', 'windows-11'].includes(labelOs) || image.includes('windows') || lowerName.includes('windows') || lowerName.includes('winxp')) {
     const versionTag = (containerEnv.find((e) => e.startsWith('VERSION=')) || '').split('=')[1] || '';
-    const legacyTag = (image.split(':').pop() || '')
-      .replace(/--/g, ':')
-      .split(':')[0]
-      .replace(/\d+\.\d+\.\d+/g, '')
-      .toLowerCase();
-    if (labelOs === 'windows-10' || versionTag === '10' || legacyTag === '10' || legacyTag.startsWith('10')) {
+    if (labelOs === 'windows-11' || versionTag === '11') {
+      type = 'windows-11';
+      displayName = 'Windows 11 Pro';
+      distro = 'Windows';
+      version = '11 24H2';
+      icon = 'windows-11';
+      desktopEnv = 'Modern UI (Fluent)';
+    } else if (labelOs === 'windows-10' || versionTag === '10') {
       type = 'windows-10';
       displayName = 'Windows 10 Pro';
       distro = 'Windows';
       version = '10 22H2';
       icon = 'windows-10';
       desktopEnv = 'Modern UI';
-    } else if (labelOs === 'windows-8' || versionTag === '8e' || versionTag === '8' || legacyTag === '8.1' || legacyTag === '8') {
+    } else if (labelOs === 'windows-8' || versionTag === '8e') {
       type = 'windows-8';
       displayName = 'Windows 8.1 Enterprise';
       distro = 'Windows';
       version = '8.1';
       icon = 'windows-8';
       desktopEnv = 'Modern UI (Metro)';
-    } else if (labelOs === 'windows-7' || versionTag === '7u' || versionTag === '7' || legacyTag === '7' || legacyTag.startsWith('7')) {
+    } else if (labelOs === 'windows-7' || versionTag === '7u') {
       type = 'windows-7';
       displayName = 'Windows 7 Ultimate';
       distro = 'Windows';
       version = '7 SP1';
       icon = 'windows-7';
       desktopEnv = 'Aero / Basic';
-    } else if (labelOs === 'windows-xp' || versionTag === 'xp' || legacyTag === 'xp') {
+    } else if (labelOs === 'windows-xp' || versionTag === 'xp') {
       type = 'windows-xp';
       displayName = 'Windows XP Professional SP3';
       distro = 'Windows';
@@ -1737,7 +1739,7 @@ app.post('/api/containers/create', async (req, res) => {
   const name = containerName || `${osType || appConfig.defaultOsTemplate || 'ubuntu'}-desktop-${Math.floor(Math.random() * 900 + 100)}`;
 
   let image = 'accetto/ubuntu-vnc-xfce-g3';
-  const windowsVersions: Record<string, string> = { 'windows-xp': 'xp', 'windows-7': '7u', 'windows-8': '8e', 'windows-10': '10' };
+  const windowsVersions: Record<string, string> = { 'windows-xp': 'xp', 'windows-7': '7u', 'windows-8': '8e', 'windows-10': '10', 'windows-11': '11' };
   const windowsVersion = customImageName ? '' : windowsVersions[osType] || '';
   if (customImageName) {
     image = customImageName;

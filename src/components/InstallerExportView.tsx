@@ -94,6 +94,7 @@ const IMAGE_MODULES = [
   { id: 'os:windows-7', label: 'Windows 7 Ultimate', image: 'dockurr/windows' },
   { id: 'os:windows-8', label: 'Windows 8.1 Enterprise', image: 'dockurr/windows' },
   { id: 'os:windows-10', label: 'Windows 10 Pro', image: 'dockurr/windows' },
+  { id: 'os:windows-11', label: 'Windows 11 Pro', image: 'dockurr/windows' },
   { id: 'os:debian', label: 'Debian 12 XFCE', image: 'ghcr.io/linuxserver/webtop:debian-xfce' },
   { id: 'os:kali', label: 'Kali Linux GUI', image: 'kasmweb/kali-rolling-desktop:1.16.0' },
   { id: 'os:alpine', label: 'Alpine Light', image: 'ghcr.io/linuxserver/webtop:alpine-kde' },
@@ -477,6 +478,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
     "Windows 7 Ultimate (dockurr/windows)",
     "Windows 8.1 Enterprise (dockurr/windows)",
     "Windows 10 Pro (dockurr/windows)",
+    "Windows 11 Pro (dockurr/windows)",
     "Debian XFCE (ghcr.io/linuxserver/webtop:debian-xfce)",
     "Kali Linux (kasmweb/kali-rolling-desktop:1.16.0)",
     "Alpine Linux (ghcr.io/linuxserver/webtop:alpine-kde)"

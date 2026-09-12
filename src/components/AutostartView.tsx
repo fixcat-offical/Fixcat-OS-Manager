@@ -164,6 +164,7 @@ export const AutostartView: React.FC<AutostartViewProps> = ({ api }) => {
     if (i.includes('ubuntu')) return 'ubuntu';
     if (i.includes('windows')) {
       const tag = i.split(':').pop() || '';
+      if (tag === '11' || tag === '11l' || tag === '11e') return 'windows-11';
       if (tag === '7' || tag === '7u') return 'windows-7';
       if (tag === '8' || tag === '8.1' || tag === '8e') return 'windows-8';
       if (tag === '10' || tag === '10l' || tag === '10e') return 'windows-10';
