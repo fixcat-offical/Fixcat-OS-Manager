@@ -50,6 +50,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const [cpuCores, setCpuCores] = useState('2');
   const [resolution, setResolution] = useState('1920x1080');
   const [restartPolicy, setRestartPolicy] = useState('no');
+  const [gpu, setGpu] = useState(true);
   const [targetNode, setTargetNode] = useState(defaultNode || 'local');
 
   const [isDeploying, setIsDeploying] = useState(false);
@@ -315,6 +316,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
         cpuCores,
         resolution,
         restartPolicy,
+        gpu,
       });
       setDeployStep(4);
     } catch (err: any) {
@@ -542,6 +544,21 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                   <option value="always">Всегда (always)</option>
                   <option value="on-failure">При ошибке (on-failure)</option>
                 </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="gpu-accel"
+                  checked={gpu}
+                  disabled={isDeploying || !isWindowsTemplate}
+                  onChange={(e) => setGpu(e.target.checked)}
+                  className="w-4 h-4 rounded bg-slate-800 border-slate-600 text-blue-500 focus:ring-blue-500 cursor-pointer disabled:opacity-40"
+                />
+                <label htmlFor="gpu-accel" className="text-slate-300 text-xs cursor-pointer select-none">
+                  GPU-ускорение (Windows, энв. GPU=Y)
+                  {!isWindowsTemplate && <span className="text-slate-500"> — только для Windows</span>}
+                </label>
               </div>
             </div>
           </div>

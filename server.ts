@@ -1771,13 +1771,15 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
   let rdpHostPort: number | null = null;
   const winDeviceList: string[] = [];
   if (isWindows) {
-    extraEnv = ` -e VERSION=${windowsVersion} -e RAM_SIZE=${ramGb}G -e CPU_CORES=${cpuVal} -e GPU=Y -e DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers`;
     for (const dev of ['/dev/kvm', '/dev/net/tun', '/dev/dri/card0', '/dev/dri/renderD128']) {
       if (fs.existsSync(dev)) {
         winDeviceList.push(dev);
         extraDevices += ` --device=${dev}`;
       }
     }
+    const driExists = winDeviceList.some((d) => d.startsWith('/dev/dri/'));
+    const gpuEnabled = req.body.gpu === true || (req.body.gpu !== false && driExists);
+    extraEnv = ` -e VERSION=${windowsVersion} -e RAM_SIZE=${ramGb}G -e CPU_CORES=${cpuVal} -e GPU=${gpuEnabled ? 'Y' : 'N'} -e DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers`;
     extraDevices += ' --cap-add NET_ADMIN --stop-timeout 120';
     const storageDir = path.join(dataDir, 'win-storage', name);
     try {
@@ -1819,7 +1821,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
           Image: image,
           Env: [
             ...(isWindows
-              ? [`VERSION=${windowsVersion}`, `RAM_SIZE=${ramGb}G`, `CPU_CORES=${cpuVal}`, 'GPU=Y', 'DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers']
+              ? [`VERSION=${windowsVersion}`, `RAM_SIZE=${ramGb}G`, `CPU_CORES=${cpuVal}`, `GPU=${winDeviceList.some((d) => d.startsWith('/dev/dri/')) && req.body.gpu !== false ? 'Y' : 'N'}`, 'DRIVERS=https://fedoraproject.org/wiki/Windows_Virtio_Drivers']
               : []),
             `RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}`,
           ],
