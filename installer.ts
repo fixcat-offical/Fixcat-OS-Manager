@@ -999,7 +999,7 @@ export function getModuleImages(): string[] {
 // ---------------------------------------------------------------------------
 // Installer Routes (Express)
 // ---------------------------------------------------------------------------
-export function registerInstallerRoutes(app: express.Express): void {
+export function registerInstallerRoutes(app: express.Express, auth: { allowBootstrapOrAdmin: (req: any, res: any, next: () => void) => void }): void {
   app.get('/api/installer/status', (req, res) => {
     res.json(getPublicState());
   });
@@ -1023,7 +1023,7 @@ export function registerInstallerRoutes(app: express.Express): void {
     });
   });
 
-  app.post('/api/installer/start', async (req, res) => {
+  app.post('/api/installer/start', auth.allowBootstrapOrAdmin, async (req, res) => {
     if (installerState.status === 'running') {
       return res.status(409).json({ error: 'Установка уже выполняется.' });
     }
@@ -1056,7 +1056,7 @@ export function registerInstallerRoutes(app: express.Express): void {
     res.json({ success: true, status: 'running', config: cfg });
   });
 
-  app.post('/api/installer/stop', (req, res) => {
+  app.post('/api/installer/stop', auth.allowBootstrapOrAdmin, (req, res) => {
     if (installerState.status === 'running') {
       installerState.cancelRequested = true;
       logWarn('Запрошена остановка установки...');
@@ -1071,7 +1071,7 @@ export function registerInstallerRoutes(app: express.Express): void {
     res.json({ modules });
   });
 
-  app.post('/api/modules/:id/install', async (req, res) => {
+  app.post('/api/modules/:id/install', auth.allowBootstrapOrAdmin, async (req, res) => {
     const def = MODULES.find((m) => m.id === req.params.id);
     if (!def) return res.status(404).json({ error: 'Модуль не найден' });
     if (moduleStates[def.id]?.status === 'installing') {
@@ -1081,7 +1081,7 @@ export function registerInstallerRoutes(app: express.Express): void {
     res.json({ success: true, message: `Установка «${def.name}» запущена` });
   });
 
-  app.post('/api/modules/:id/uninstall', async (req, res) => {
+  app.post('/api/modules/:id/uninstall', auth.allowBootstrapOrAdmin, async (req, res) => {
     const def = MODULES.find((m) => m.id === req.params.id);
     if (!def) return res.status(404).json({ error: 'Модуль не найден' });
     if (moduleStates[def.id]?.status === 'installing') {

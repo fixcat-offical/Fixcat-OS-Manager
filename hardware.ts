@@ -8,6 +8,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 interface HardwareDeps {
+  requireAuth: (req: any, res: any, next: () => void) => void;
   requireAdmin: (req: any, res: any, next: () => void) => void;
   recordEvent: (type: string, message: string, container?: string, id?: string) => void;
 }
@@ -117,10 +118,10 @@ function applyToCores(cores: number[], fn: (cpuIndex: number, cpufreqDir: string
 }
 
 export function registerHardwareRoutes(app: express.Express, deps: HardwareDeps): void {
-  const { requireAdmin, recordEvent } = deps;
+  const { requireAuth, requireAdmin, recordEvent } = deps;
 
   // ---------- CPU ----------
-  app.get('/api/hardware/cpu', (req, res) => {
+  app.get('/api/hardware/cpu', requireAuth, (req, res) => {
     const status = getCpuStatus();
     const first = status.cpus[0];
     res.json({
@@ -218,7 +219,7 @@ export function registerHardwareRoutes(app: express.Express, deps: HardwareDeps)
   });
 
   // ---------- Fans ----------
-  app.get('/api/hardware/fans', (req, res) => {
+  app.get('/api/hardware/fans', requireAuth, (req, res) => {
     try {
       const fans: any[] = [];
       let pwmCount = 0;
@@ -356,7 +357,7 @@ export function registerHardwareRoutes(app: express.Express, deps: HardwareDeps)
     return execSync(cmd, { timeout: 120000, encoding: 'utf-8' });
   }
 
-  app.get('/api/hardware/swap', (req, res) => {
+  app.get('/api/hardware/swap', requireAuth, (req, res) => {
     try {
       const swaps = readSwaps();
       const totalMb = swaps.reduce((acc, s) => acc + s.sizeMb, 0);

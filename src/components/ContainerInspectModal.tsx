@@ -16,11 +16,13 @@ import { getOSIcon } from './icons/OSIcons';
 interface ContainerInspectModalProps {
   container: ContainerItem | null;
   onClose: () => void;
+  api?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 export const ContainerInspectModal: React.FC<ContainerInspectModalProps> = ({
   container,
   onClose,
+  api,
 }) => {
   if (!container) return null;
 
@@ -32,7 +34,7 @@ export const ContainerInspectModal: React.FC<ContainerInspectModalProps> = ({
   const fetchInspect = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/containers/${container.Id}/inspect`);
+      const res = await (api || fetch)(`/api/containers/${container.Id}/inspect`);
       const data = await res.json();
       setInspectData(data.inspect || data);
     } catch {

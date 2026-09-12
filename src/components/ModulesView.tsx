@@ -125,7 +125,11 @@ const statusBadge = (m: ModuleItem) => {
 // Main view
 // ---------------------------------------------------------------------------
 
-export const ModulesView: React.FC = () => {
+interface ModulesViewProps {
+  authToken?: string | null;
+}
+
+export const ModulesView: React.FC<ModulesViewProps> = ({ authToken }) => {
   const [modules, setModules] = useState<ModuleItem[]>(defaultModules);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -184,7 +188,10 @@ export const ModulesView: React.FC = () => {
   const act = async (id: string, action: 'install' | 'uninstall') => {
     setBusyId(id);
     try {
-      await fetch(`/api/modules/${id}/${action}`, { method: 'POST' });
+      await fetch(`/api/modules/${id}/${action}`, {
+        method: 'POST',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
     } catch {
       // ignore
     } finally {

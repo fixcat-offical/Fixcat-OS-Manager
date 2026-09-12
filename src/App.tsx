@@ -62,7 +62,9 @@ export default function App() {
   const api = useCallback(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (activeNodeId === 'local') {
-        return fetch(input, init);
+        const headers = new Headers(init?.headers);
+        if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+        return fetch(input, { ...init, headers });
       }
       const path = typeof input === 'string' ? input : String(input);
       let body: any;
@@ -179,7 +181,10 @@ export default function App() {
       // Always fetch the master's system info so we always have the live node list.
       // When remote is active, this is the ONLY call that goes directly to this panel;
       // everything else goes through the api() proxy.
-      const localSysRes = await fetch('/api/system');
+      const localSysRes = await fetch(
+        '/api/system',
+        authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}
+      );
       let localSystem: any = null;
       if (localSysRes.ok) {
         localSystem = await localSysRes.json();
@@ -210,8 +215,8 @@ export default function App() {
         }
       } else {
         const [contRes, histRes] = await Promise.all([
-          fetch('/api/containers'),
-          fetch('/api/stats/history'),
+          api('/api/containers'),
+          api('/api/stats/history'),
         ]);
         if (contRes.ok) {
           const cData = await contRes.json();
@@ -228,7 +233,7 @@ export default function App() {
       setIsRefreshing(false);
       setLastUpdated(new Date());
     }
-  }, [authStatus.isAuthenticated, api, activeNodeId]);
+  }, [authStatus.isAuthenticated, api, activeNodeId, authToken]);
 
   // Switch active device; refetch happens automatically because fetchData
   // depends on activeNodeId through the api() helper.
@@ -284,7 +289,7 @@ export default function App() {
       } else {
         res = await fetch('/api/containers/create', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
           body: JSON.stringify(payload),
         });
       }
@@ -310,7 +315,10 @@ export default function App() {
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify(cfg),
       });
       if (res.ok) {
@@ -438,11 +446,11 @@ export default function App() {
           )}
 
           {currentTab === 'modules' && (
-            <ModulesView />
+            <ModulesView authToken={authToken} />
           )}
 
           {currentTab === 'installer' && (
-            <InstallerExportView />
+            <InstallerExportView authToken={authToken} />
           )}
 
           {currentTab === 'settings' && (

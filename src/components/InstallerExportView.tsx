@@ -137,7 +137,12 @@ const logColor = (level: LogLevel): string => {
 // Main view
 // ---------------------------------------------------------------------------
 
-export const InstallerExportView: React.FC = () => {
+interface InstallerExportViewProps {
+  authToken?: string | null;
+}
+
+export const InstallerExportView: React.FC<InstallerExportViewProps> = ({ authToken }) => {
+  const authHeaders = { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
   // Installer live state
   const [installer, setInstaller] = useState<InstallerStatus>(IDLE_STATUS);
   const [connected, setConnected] = useState(false);
@@ -267,7 +272,7 @@ export const InstallerExportView: React.FC = () => {
   const scanFreePort = async () => {
     setScanPort(true);
     try {
-      const res = await fetch(`/api/ports/next?desired=${parseInt(port, 10) || 3000}`);
+      const res = await fetch(`/api/ports/next?desired=${parseInt(port, 10) || 3000}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
       if (res.ok) {
         const data = await res.json();
         if (data.freePort) setPort(String(data.freePort));
@@ -293,7 +298,7 @@ export const InstallerExportView: React.FC = () => {
     try {
       const res = await fetch('/api/installer/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           port: parseInt(port, 10) || 3000,
           installDir,
@@ -317,7 +322,7 @@ export const InstallerExportView: React.FC = () => {
   };
 
   const stopInstall = async () => {
-    await fetch('/api/installer/stop', { method: 'POST' }).catch(() => {});
+    await fetch('/api/installer/stop', { method: 'POST', headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} }).catch(() => {});
   };
 
   // Export kit file contents

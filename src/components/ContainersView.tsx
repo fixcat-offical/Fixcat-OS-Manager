@@ -739,6 +739,7 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
         <ContainerInspectModal
           container={inspectingContainer}
           onClose={() => setInspectingContainer(null)}
+          api={api}
         />
       )}
 

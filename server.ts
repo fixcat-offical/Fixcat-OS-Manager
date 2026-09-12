@@ -114,6 +114,13 @@ export function requireAdmin(req: any, res: any, next: () => void) {
   next();
 }
 
+// Allow first-run bootstrap (no admins registered yet → open), else require admin.
+// Used by installer / module management so a fresh panel can still be set up.
+function allowBootstrapOrAdmin(req: any, res: any, next: () => void) {
+  if (getUsers().length === 0) return next();
+  return requireAdmin(req, res, next);
+}
+
 // In-memory event journal (last 150 events)
 interface EventEntry {
   timestamp: string;
@@ -1199,7 +1206,7 @@ function getNetworkTotals() {
   return { rx, tx };
 }
 
-app.get('/api/system', async (req, res) => {
+app.get('/api/system', requireAuth, async (req, res) => {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -1251,7 +1258,7 @@ app.get('/api/system', async (req, res) => {
 });
 
 // 2. Free Port Scanner Endpoint
-app.get('/api/ports/next', async (req, res) => {
+app.get('/api/ports/next', requireAuth, async (req, res) => {
   const desired = parseInt(req.query.desired as string, 10) || 6082;
   const freePort = await getAvailablePort(desired);
   const freeVncPort = await getAvailablePort(freePort + 100);
@@ -1263,7 +1270,7 @@ app.get('/api/ports/next', async (req, res) => {
 });
 
 // 3. List REAL OS Containers
-app.get('/api/containers', async (req, res) => {
+app.get('/api/containers', requireAuth, async (req, res) => {
   try {
     const { statusCode, data } = await queryDockerSocket('/containers/json?all=1');
     if (statusCode === 200 && Array.isArray(data)) {
@@ -1363,7 +1370,7 @@ app.get('/api/containers', async (req, res) => {
 });
 
 // 4. Container Actions
-app.post('/api/containers/:id/action', async (req, res) => {
+app.post('/api/containers/:id/action', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { action } = req.body;
 
@@ -1399,7 +1406,7 @@ app.post('/api/containers/:id/action', async (req, res) => {
 });
 
 // 5. Container Logs
-app.get('/api/containers/:id/logs', async (req, res) => {
+app.get('/api/containers/:id/logs', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -1415,7 +1422,7 @@ app.get('/api/containers/:id/logs', async (req, res) => {
 });
 
 // 4b. Rename Container
-app.post('/api/containers/:id/rename', async (req, res) => {
+app.post('/api/containers/:id/rename', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name } = req.body || {};
   if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,63}$/.test(name)) {
@@ -1434,7 +1441,7 @@ app.post('/api/containers/:id/rename', async (req, res) => {
 });
 
 // 4c. Docker Version + Info (dashboard for diagnostics)
-app.get('/api/docker/info', async (req, res) => {
+app.get('/api/docker/info', requireAuth, async (req, res) => {
   try {
     const [verRes, infoRes] = await Promise.all([
       queryDockerSocket('/version'),
@@ -1484,7 +1491,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // 4e. Local Docker images list (for deploy-by-image)
-app.get('/api/images', async (req, res) => {
+app.get('/api/images', requireAuth, async (req, res) => {
   try {
     const { statusCode, data } = await queryDockerSocket('/images/json?all=0');
     if (statusCode === 200 && Array.isArray(data)) {
@@ -1510,7 +1517,7 @@ app.get('/api/images', async (req, res) => {
 });
 
 // 4f. Event journal (recent panel activity)
-app.get('/api/events', async (req, res) => {
+app.get('/api/events', requireAuth, async (req, res) => {
   let dockerEvents: any[] = [];
   try {
     const { statusCode, data } = await queryDockerSocket('/events?since=' + Math.floor(Date.now() / 1000 - 300), 'GET');
@@ -1531,11 +1538,11 @@ app.get('/api/events', async (req, res) => {
 });
 
 // 4g. Config backup / restore (download JSON, apply JSON)
-app.get('/api/config/backup', (req, res) => {
+app.get('/api/config/backup', requireAdmin, (req, res) => {
   res.json({ success: true, config: appConfig, exportedAt: new Date().toISOString(), appVersion });
 });
 
-app.post('/api/config/restore', (req, res) => {
+app.post('/api/config/restore', requireAdmin, (req, res) => {
   const cfg = req.body?.config;
   if (!cfg || typeof cfg !== 'object') {
     return res.status(400).json({ error: 'Отсутствует блок "config" в загруженном файле.' });
@@ -1551,7 +1558,7 @@ app.post('/api/config/restore', (req, res) => {
 });
 
 // 5b. Container Inspect (full Docker metadata)
-app.get('/api/containers/:id/inspect', async (req, res) => {
+app.get('/api/containers/:id/inspect', requireAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const { statusCode, data } = await queryDockerSocket(`/containers/${id}/json`);
@@ -1567,7 +1574,7 @@ app.get('/api/containers/:id/inspect', async (req, res) => {
 // 5c. Autostart (restart policy) management
 const RESTART_POLICIES = ['no', 'always', 'unless-stopped', 'on-failure'];
 
-app.get('/api/autostarts', async (req, res) => {
+app.get('/api/autostarts', requireAuth, async (req, res) => {
   try {
     const { statusCode, data } = await queryDockerSocket('/containers/json?all=1');
     if (statusCode === 200 && Array.isArray(data)) {
@@ -1603,7 +1610,7 @@ app.get('/api/autostarts', async (req, res) => {
 });
 
 // Bulk apply autostart policy to all (or filtered) containers
-app.post('/api/autostarts/bulk', async (req, res) => {
+app.post('/api/autostarts/bulk', requireAdmin, async (req, res) => {
   const { policy, state } = req.body || {};
   if (!RESTART_POLICIES.includes(policy)) {
     return res.status(400).json({ error: `Недопустимая политика: "${policy}".` });
@@ -1643,7 +1650,7 @@ app.post('/api/autostarts/bulk', async (req, res) => {
   }
 });
 
-app.post('/api/autostarts/:id', async (req, res) => {
+app.post('/api/autostarts/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { policy } = req.body || {};
   if (!RESTART_POLICIES.includes(policy)) {
@@ -1663,7 +1670,7 @@ app.post('/api/autostarts/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/autostarts/:id', async (req, res) => {
+app.delete('/api/autostarts/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const { statusCode, data } = await queryDockerSocket(`/containers/${id}/update`, 'POST', {
@@ -1680,7 +1687,7 @@ app.delete('/api/autostarts/:id', async (req, res) => {
 });
 
 // 6. Historical telemetry metrics
-app.get('/api/stats/history', (req, res) => {
+app.get('/api/stats/history', requireAuth, (req, res) => {
   res.json({
     history: telemetryHistory,
   });
@@ -1699,10 +1706,12 @@ app.post('/api/config/api-key', requireAdmin, (_req, res) => {
   res.json({ success: true, apiKey: appConfig.apiKey, message: 'API ключ обновлён. Обновите его в подключённых узлах.' });
 });
 
-app.post('/api/config', (req, res) => {
+app.post('/api/config', requireAdmin, (req, res) => {
   const body = req.body || {};
+  const protectedKeys = new Set(['apiKey']);
   // Whitelist-style update: apply only known keys
   for (const key of Object.keys(body)) {
+    if (protectedKeys.has(key)) continue;
     if (key in appConfig) {
       appConfig[key] = body[key];
     }
@@ -1720,7 +1729,7 @@ app.post('/api/config', (req, res) => {
 });
 
 // 8. FULL AUTOMATED Deploy OS Container with FREE PORT AUTO-DISCOVERY
-app.post('/api/containers/create', async (req, res) => {
+app.post('/api/containers/create', requireAdmin, async (req, res) => {
   const { osType, containerName, vncPort, ramMb, cpuCores, resolution, restartPolicy } = req.body;
   // Deploy from arbitrary/custom image (overrides template mapping)
   let customImageName: string | null = null;
@@ -2134,8 +2143,8 @@ app.post('/api/nodes/:id/proxy', requireAdmin, async (req, res) => {
 });
 
 // --- INSTALLER & MODULES ROUTES (Fixcat installer engine) ---
-registerInstallerRoutes(app);
-registerHardwareRoutes(app, { requireAdmin, recordEvent });
+registerInstallerRoutes(app, { allowBootstrapOrAdmin });
+registerHardwareRoutes(app, { requireAuth, requireAdmin, recordEvent });
 
 // --- Panel & Component Update ---
 const updateLog: string[] = [];
