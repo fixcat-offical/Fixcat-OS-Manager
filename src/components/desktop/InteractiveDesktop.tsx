@@ -161,7 +161,7 @@ export const InteractiveDesktop: React.FC<InteractiveDesktopProps> = ({ containe
   // -------------------------------------------------------------
   if (isWinXP) {
     return (
-      <div className="relative w-full h-full bg-[#0055EA] overflow-hidden select-none font-sans flex flex-col justify-between">
+      <div id="os-desktop-sim" className="relative w-full h-full bg-[#0055EA] overflow-hidden select-none font-sans flex flex-col justify-between">
         {/* Bliss Wallpaper Background Canvas */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#245EDC] via-[#3B82F6] to-[#48BB78] opacity-90 pointer-events-none" />
         <div
@@ -381,7 +381,7 @@ export const InteractiveDesktop: React.FC<InteractiveDesktopProps> = ({ containe
   // Ubuntu 22.04 LTS XFCE / LXDE Desktop Shell
   // -------------------------------------------------------------
   return (
-    <div className="relative w-full h-full bg-[#2C001E] overflow-hidden select-none font-sans flex flex-col justify-between">
+    <div id="os-desktop-sim" className="relative w-full h-full bg-[#2C001E] overflow-hidden select-none font-sans flex flex-col justify-between">
       {/* Ubuntu Aubergine gradient background */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#77216F] via-[#5E2750] to-[#2C001E] opacity-95 pointer-events-none" />
       <div

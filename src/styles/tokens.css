@@ -44,6 +44,9 @@
   --band-ink:     var(--ink);
   --band-ink-2:   var(--muted);
 
+  /* Текст экранов-симуляций ОС (всегда светлый, не зависит от темы) */
+  --sim-text: oklch(94% 0.008 264);
+
   --font-display: "Space Grotesk", "Inter Tight", ui-sans-serif, system-ui, sans-serif;
   --font-body:    "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-label:   "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;

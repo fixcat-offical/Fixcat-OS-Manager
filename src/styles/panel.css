@@ -162,6 +162,13 @@
 [class~="hover:bg-slate-800"]:hover { background-color: var(--paper-3) !important; }
 [class~="hover:bg-slate-800/80"]:hover { background-color: var(--paper-3) !important; }
 
+/* ---------- Адаптация белого текста под тему ---------- */
+/* В светлой (cobalt) теме text-white не должен оставаться белым на светлом фоне:
+   маппим на ink (в тёмных темах ink ≈ белый, внешне не меняется). */
+[class~="text-white"] { color: var(--ink); }
+/* Экраны-симуляции ОС (Windows XP / Ubuntu в noVNC) — там белый на чёрном обязателен */
+#os-desktop-sim [class~="text-white"] { color: var(--sim-text); }
+
 /* ---------- Заголовки разделов (как на лендинге) ---------- */
 .sec-head h1, .sec-head h2, .sec-head h3 {
   font-family: var(--font-display);
