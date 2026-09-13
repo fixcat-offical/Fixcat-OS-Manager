@@ -1,1 +1,115 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/panel.css';
+
+/*
+  Fixcat OS Manager — панель
+  Tailwind v4: стандартные имена палитры (slate/blue/…) ремапятся на
+  дизайн-токены Cobalt, поэтому весь существующий UI автоматически
+  следует за выбранной темой (cobalt / black / panel) через [data-theme].
+*/
+
+@theme {
+  --font-display: 'Space Grotesk', 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Семантические имена → дизайн-токены (utilities: bg-paper, text-ink, border-rule, …) */
+  --color-paper:  var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-rule:   var(--rule);
+  --color-rule-2: var(--rule-2);
+  --color-muted:  var(--muted);
+  --color-neutral: var(--neutral);
+  --color-ink:    var(--ink);
+  --color-ink-2:  var(--ink-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-graphite: var(--graphite);
+  --color-graphite-2: var(--graphite-2);
+  --color-on-graphite: var(--on-graphite);
+  --color-ok:     var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-warn:   var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+
+  /* Нейтральная шкала → бумага/линии/чернила */
+  --color-slate-50:  var(--ink);
+  --color-slate-100: var(--ink);
+  --color-slate-200: var(--ink-2);
+  --color-slate-300: var(--ink-2);
+  --color-slate-400: var(--muted);
+  --color-slate-500: var(--neutral);
+  --color-slate-600: var(--rule-2);
+  --color-slate-700: var(--rule);
+  --color-slate-800: var(--paper-3);
+  --color-slate-900: var(--paper-2);
+  --color-slate-950: var(--paper);
+
+  /* Акцент: единственный цвет бренда — cobalt */
+  --color-blue-400: var(--accent);
+  --color-blue-500: var(--accent);
+  --color-blue-600: var(--accent);
+  --color-blue-700: color-mix(in oklab, var(--accent) 70%, black);
+  --color-blue-800: oklch(28% 0.11 256);
+  --color-blue-900: oklch(20% 0.07 256);
+  --color-blue-950: oklch(14% 0.04 256);
+
+  /* Вторичные акценты схлопываются в тот же cobalt */
+  --color-cyan-300: var(--accent);
+  --color-cyan-400: var(--accent);
+  --color-cyan-500: var(--accent);
+  --color-indigo-400: var(--accent);
+  --color-indigo-500: var(--accent);
+  --color-violet-300: var(--accent);
+  --color-violet-400: var(--accent);
+  --color-violet-500: var(--accent);
+  --color-sky-300: var(--accent);
+  --color-sky-400: var(--accent);
+  --color-sky-500: var(--accent);
+}
+
+/* ============ Базовые стили ============ */
+
+html, body { overflow-x: clip; }
+
+html { background: var(--paper); }
+
+body {
+  background: var(--paper);
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--lh-normal);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button { font-family: inherit; cursor: pointer; }
+
+code, pre, kbd {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* Скроллбары в духе Workbench */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 5px; border: 2px solid var(--paper); }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }

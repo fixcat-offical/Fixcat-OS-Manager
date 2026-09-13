@@ -16,10 +16,12 @@ import { UsersView } from './components/UsersView';
 import { HardwareView } from './components/HardwareView';
 import { NodesView } from './components/NodesView';
 import { AuthView } from './components/AuthView';
+import { useTheme } from './lib/useTheme';
 import { ContainerItem, SystemInfo, MetricHistoryPoint, AuthStatus, NodeItem } from './types';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 export default function App() {
+  const { theme, setTheme } = useTheme();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -346,7 +348,7 @@ export default function App() {
   const activeNode = activeNodeId && activeNodeId !== 'local' ? nodes.find((n) => n.id === activeNodeId) || null : null;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none">
+    <div className="flex h-screen w-screen overflow-hidden bg-paper text-ink-2 font-sans select-none">
       {/* Fixcat OS Manager Sidebar */}
       <Sidebar
         currentTab={currentTab}
@@ -361,7 +363,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-950">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-paper">
         <Header
           currentTab={currentTab}
           systemInfo={systemInfo}
@@ -377,6 +379,8 @@ export default function App() {
           nodes={nodes}
           activeNodeId={activeNodeId}
           onChangeNode={handleChangeNode}
+          theme={theme}
+          onThemeChange={setTheme}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">

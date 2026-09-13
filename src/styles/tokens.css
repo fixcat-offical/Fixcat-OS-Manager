@@ -1,0 +1,158 @@
+/* ============================================================
+   Fixcat OS Manager — панель
+   Дизайн-system: Cobalt · Workbench (перенесён с лендинга FOMS)
+   Токены: 3 темы — cobalt (светлая), black (чёрная), panel (как в панели)
+   ============================================================ */
+
+:root {
+  --paper:      oklch(98.5% 0.004 250);
+  --paper-2:    oklch(96.5% 0.005 252);
+  --paper-3:    oklch(94%   0.006 254);
+  --rule:       oklch(91%   0.008 255);
+  --rule-2:     oklch(83%   0.011 255);
+  --muted:      oklch(56%   0.013 255);
+  --neutral:    oklch(46%   0.015 255);
+  --ink-2:      oklch(34%   0.018 257);
+  --ink:        oklch(24%   0.020 258);
+  --accent:     oklch(58%   0.20  256);
+  --accent-ink: oklch(99%   0.004 256);
+  --focus:      oklch(58%   0.20  256);
+  --graphite:   oklch(24%   0.018 260);
+  --graphite-2: oklch(30%   0.020 260);
+  --graphite-rule: oklch(38% 0.022 260);
+  --on-graphite:   oklch(88% 0.014 256);
+  --on-graphite-2: oklch(68% 0.022 258);
+  --cyan:       oklch(79%   0.15  212);
+
+  /* Семантика панели (успех / предупреждение / ошибка) */
+  --ok:        oklch(52%   0.16  150);
+  --ok-ink:    oklch(99%   0.004 150);
+  --ok-tint:   oklch(95%   0.04  150);
+  --warn:      oklch(72%   0.13  70);
+  --warn-ink:  oklch(28%   0.06  70);
+  --warn-tint: oklch(96%   0.03  70);
+  --danger:    oklch(55%   0.20  25);
+  --danger-ink: oklch(99%  0.004 25);
+  --danger-tint: oklch(95% 0.045 25);
+
+  /* Спец-поверхности */
+  --nav-bg:     oklch(98.5% 0.004 250 / 0.86);
+  --card-bg:    var(--paper);
+  --band-bg:      var(--paper-2);
+  --band-surface: var(--paper-3);
+  --band-rule:    var(--rule);
+  --band-ink:     var(--ink);
+  --band-ink-2:   var(--muted);
+
+  --font-display: "Space Grotesk", "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-label:   "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-md:   1.125rem;
+  --text-lg:   1.375rem;
+  --text-xl:   1.75rem;
+
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6.5rem;
+
+  --tracking-display: -0.03em;
+  --tracking-tight:   -0.015em;
+  --tracking-label:   0.06em;
+
+  --lh-tight:   1.06;
+  --lh-snug:    1.18;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.6;
+
+  --radius-card:   10px;
+  --radius-pill:   6px;
+  --radius-input:  6px;
+  --shadow-card:   0 1px 2px oklch(24% 0.02 258 / 0.05);
+  --shadow-raise:  0 24px 60px -24px oklch(24% 0.02 258 / 0.4);
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long:  420ms;
+}
+
+/* ---------- Тема «black» — почти чёрная, нейтральный графит ---------- */
+html[data-theme="black"] {
+  --paper:      oklch(16%   0.012 260);
+  --paper-2:    oklch(20%   0.014 260);
+  --paper-3:    oklch(24%   0.016 260);
+  --rule:       oklch(28%   0.016 260);
+  --rule-2:     oklch(38%   0.018 260);
+  --muted:      oklch(62%   0.015 260);
+  --neutral:    oklch(72%   0.015 260);
+  --ink-2:      oklch(84%   0.012 260);
+  --ink:        oklch(96%   0.008 260);
+
+  --ok:      oklch(72%   0.15  150);
+  --ok-ink:  oklch(12%   0.02  150);
+  --ok-tint: oklch(24%   0.05  150);
+  --warn:    oklch(78%   0.12  70);
+  --warn-ink: oklch(18%  0.03  70);
+  --warn-tint: oklch(28% 0.04  70);
+  --danger:    oklch(66%  0.17  25);
+  --danger-ink: oklch(12% 0.01  25);
+  --danger-tint: oklch(28% 0.06  25);
+
+  --nav-bg: oklch(16% 0.012 260 / 0.86);
+  --shadow-card:  0 1px 2px oklch(0% 0 0 / 0.35);
+  --shadow-raise: 0 24px 60px -24px oklch(0% 0 0 / 0.6);
+}
+
+/* ---------- Тема «panel» — как в панели Fixcat OS Manager (slate + blue) ---------- */
+html[data-theme="panel"] {
+  --paper:      oklch(13.5% 0.03  264);
+  --paper-2:    oklch(19%   0.033 264);
+  --paper-3:    oklch(25%   0.033 264);
+  --rule:       oklch(32%   0.028 264);
+  --rule-2:     oklch(41%   0.026 264);
+  --muted:      oklch(63%   0.02  264);
+  --neutral:    oklch(75%   0.02  264);
+  --ink-2:      oklch(89%   0.014 264);
+  --ink:        oklch(97%   0.008 264);
+
+  --ok:      oklch(70%   0.15  150);
+  --ok-ink:  oklch(14%   0.02  150);
+  --ok-tint: oklch(23%   0.05  150);
+  --warn:    oklch(77%   0.12  70);
+  --warn-ink: oklch(20%  0.03  70);
+  --warn-tint: oklch(28% 0.04  70);
+  --danger:    oklch(64%  0.18  25);
+  --danger-ink: oklch(12% 0.01  25);
+  --danger-tint: oklch(27% 0.06  25);
+
+  --nav-bg: oklch(13.5% 0.03 264 / 0.86);
+  --shadow-card:  0 1px 2px oklch(0% 0 0 / 0.35);
+  --shadow-raise: 0 24px 60px -24px oklch(0% 0 0 / 0.6);
+}
+
+/* Графит всегда тёмный — подложка кода / чипсов в любой теме */
+html[data-theme="cobalt"] {
+  --graphite:   oklch(24%   0.018 260);
+  --graphite-2: oklch(30%   0.020 260);
+  --graphite-rule: oklch(38% 0.022 260);
+  --on-graphite:   oklch(88% 0.014 256);
+  --on-graphite-2: oklch(68% 0.022 258);
+}
+
+/* ---------- Плавная смена темы ---------- */
+html.theming, html.theming * {
+  transition: background-color 220ms var(--ease-out), border-color 220ms var(--ease-out),
+    color 220ms var(--ease-out), fill 220ms var(--ease-out), stroke 220ms var(--ease-out) !important;
+}

@@ -51,25 +51,25 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-paper flex items-center justify-center p-4">
       {/* Glow background effects */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-ok/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
+      <div className="relative w-full max-w-md card p-6 sm:p-8">
         {/* Header Branding */}
         <div className="text-center space-y-3 mb-8">
-          <div className="inline-flex p-3 rounded-2xl bg-blue-950/60 border border-blue-500/30 text-blue-400 mb-1">
+          <div className="inline-flex p-3 rounded-lg bg-accent/10 border border-accent/25 text-accent mb-1">
             <FixcatLogo className="w-10 h-10" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center justify-center gap-2">
+            <h1 className="sec-head text-2xl font-medium text-ink tracking-tight flex items-center justify-center gap-2">
               <span>Fixcat OS</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono border border-blue-500/30">
+              <span className="mono-label text-xs px-2 py-0.5 rounded bg-accent/15 text-accent border border-accent/25">
                 Manager
               </span>
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="mono-label mt-2">
               {isRegistered
                 ? 'Вход в систему управления операционными системами'
                 : 'Первичная регистрация администратора панели'}
@@ -78,9 +78,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
         </div>
 
         {/* Auth Mode Indicator */}
-        <div className="mb-6 p-3 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center space-x-3 text-xs text-slate-300">
-          <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span>
+        <div
+          className="mb-6 p-3 rounded-lg border flex items-center gap-3 text-xs text-on-graphite"
+          style={{ background: 'var(--graphite)', borderColor: 'var(--graphite-rule)' }}
+        >
+          <ShieldCheck className="w-5 h-5 shrink-0" style={{ color: 'var(--ok)' }} />
+          <span className="opacity-90">
             {isRegistered
               ? 'Авторизация с сохранением сессии в локальной БД'
               : 'Введите логин и пароль для создания аккаунта суперадмина'}
@@ -89,8 +92,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-6 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center space-x-2.5 text-xs text-rose-300 animate-fade-in">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <div className="mb-6 p-3.5 rounded-lg bg-danger-tint border border-danger/30 flex items-center gap-2.5 text-xs text-danger">
+            <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -98,32 +101,30 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              Имя пользователя (Логин)
-            </label>
+            <label className="mono-label block mb-1.5">Имя пользователя (Логин)</label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
-                className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-slate-100 text-xs focus:border-blue-500 focus:outline-none transition-colors"
+                className="w-full pl-10 pr-4 py-3 bg-paper-2 border border-rule rounded-md text-ink-2 text-xs focus:border-accent focus:outline-none transition-colors placeholder:text-muted"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">Пароль</label>
+            <label className="mono-label block mb-1.5">Пароль</label>
             <div className="relative">
-              <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <KeyRound className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-slate-100 text-xs focus:border-blue-500 focus:outline-none transition-colors"
+                className="w-full pl-10 pr-4 py-3 bg-paper-2 border border-rule rounded-md text-ink-2 text-xs focus:border-accent focus:outline-none transition-colors placeholder:text-muted"
                 required
               />
             </div>
@@ -131,17 +132,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
 
           {!isRegistered && (
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                Подтверждение пароля
-              </label>
+              <label className="mono-label block mb-1.5">Подтверждение пароля</label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-slate-100 text-xs focus:border-blue-500 focus:outline-none transition-colors"
+                  className="w-full pl-10 pr-4 py-3 bg-paper-2 border border-rule rounded-md text-ink-2 text-xs focus:border-accent focus:outline-none transition-colors placeholder:text-muted"
                   required
                 />
               </div>
@@ -151,7 +150,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/25 transition-all cursor-pointer flex items-center justify-center space-x-2 mt-2 disabled:opacity-50"
+            className="w-full btn-primary mt-2 disabled:opacity-50"
           >
             {isLoading ? (
               <>
@@ -167,10 +166,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ isRegistered, onLogin, onReg
           </button>
         </form>
 
-        <div className="mt-8 pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500">
-          Fixcat OS Manager v2.6 &bull; Локальная авторизация
+        <div className="mt-8 pt-4 border-t border-rule-2/60 text-center mono-label text-muted">
+          Fixcat OS Manager v2.7 &bull; Локальная авторизация
         </div>
       </div>
     </div>
   );
 };
+
+export default AuthView;

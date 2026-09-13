@@ -1,0 +1,184 @@
+/* ============================================================
+   Fixcat OS Manager — компонентный слой дизайна (Workbench)
+   Перенесён с лендинга FOMS: карточки, CTA, лейблы, переключатель тем
+   ============================================================ */
+
+@layer components {
+/* ---------- Mono-лейблы и кодовая «голос» ---------- */
+.mono-label {
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--muted);
+}
+
+.kbd-mark {
+  font-family: var(--font-label);
+  font-size: 0.625rem;
+  border: 1px solid var(--rule-2);
+  border-radius: 4px;
+  padding: 0.1rem 0.28rem;
+  background: var(--paper);
+  color: var(--muted);
+}
+
+/* ---------- Кнопки: один сплошной cobalt, никогда pill > 6px ---------- */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background var(--dur-short) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+.btn-primary:hover {
+  background: color-mix(in oklab, var(--accent) 82%, black);
+  border-color: color-mix(in oklab, var(--accent) 82%, black);
+  text-decoration: none;
+}
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary[disabled], .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  background: transparent;
+  color: var(--ink);
+  border: none;
+  border-bottom: 1px solid var(--rule-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+.btn-ghost:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+
+/* ---------- Карточки: hairline, радиус 10, лёгкая тень ---------- */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-label);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--muted);
+}
+
+/* ---------- Спека-таблички (F3 pattern) ---------- */
+.spec { border-top: 1px solid var(--rule); }
+.spec__row {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-xl);
+  padding: var(--space-lg) 0;
+  border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+}
+.spec__key {
+  font-family: var(--font-label);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ---------- Переключатель тем: три точки, одна активная ---------- */
+.themes {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  background: var(--paper-2);
+}
+.theme-btn {
+  width: 26px; height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+.theme-btn:hover { background: var(--paper-3); }
+.theme-btn[aria-pressed="true"] { background: var(--paper-3); }
+.th-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  display: block;
+  box-sizing: border-box;
+}
+.th-dot[data-dot="cobalt"] { background: var(--paper); border: 1px solid var(--rule-2); }
+.th-dot[data-dot="black"]  { background: oklch(16% 0.012 260); border: 1px solid oklch(40% 0.015 260); }
+.th-dot[data-dot="panel"]  { background: oklch(13.5% 0.03 264); border: 1px solid oklch(32% 0.028 264); }
+.theme-btn[aria-pressed="true"] .th-dot { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--accent); }
+
+} /* /@layer components */
+
+/* ---------- Глобальная унификация акцентных кнопок ---------- */
+/* Tailwind bg-blue-600/bg-blue-500/bg-blue-700 → акцент, язык-цвет по теме */
+[class~="bg-blue-600"], [class~="bg-blue-500"], [class~="bg-blue-700"] {
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+}
+[class~="hover:bg-blue-500"]:hover, [class~="hover:bg-blue-600"]:hover, [class~="hover:bg-blue-700"]:hover {
+  background-color: color-mix(in oklab, var(--accent) 82%, black) !important;
+  border-color: color-mix(in oklab, var(--accent) 82%, black) !important;
+}
+
+/* Ховеры чипсов: в светлой теме держим графитовую подложку */
+[class~="hover:bg-slate-700"]:hover { background-color: var(--graphite-2) !important; }
+[class~="hover:bg-slate-800"]:hover { background-color: var(--paper-3) !important; }
+[class~="hover:bg-slate-800/80"]:hover { background-color: var(--paper-3) !important; }
+
+/* ---------- Заголовки разделов (как на лендинге) ---------- */
+.sec-head h1, .sec-head h2, .sec-head h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+  font-style: normal;
+}
+
+/* ---------- Анимация входа (reveal) ---------- */
+.reveal { opacity: 0; transform: translateY(10px); transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out); }
+.reveal.is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* ---------- Мелкие компенсации под light-тему ---------- */
+.surface-strong { background: var(--graphite) !important; color: var(--on-graphite) !important; }
