@@ -18,6 +18,7 @@ import {
   ArrowUpDown,
   Check,
   Tag,
+  Lock,
 } from 'lucide-react';
 import { ContainerItem } from '../types';
 import { copyText } from '../lib/clipboard';
@@ -381,8 +382,8 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                   </div>
                 )}
                 {container.osInfo?.noVncPort && !isRunning && (
-                  <div className="col-span-2 text-[11px] text-amber-400 font-semibold">
-                    🔒 Порт занят — контейнер остановлен
+                  <div className="col-span-2 text-[11px] text-amber-400 font-semibold flex items-center gap-1">
+                    <Lock className="w-3 h-3 shrink-0" /> Порт занят — контейнер остановлен
                   </div>
                 )}
               </div>
@@ -565,7 +566,9 @@ export const ContainersView: React.FC<ContainersViewProps> = ({
                         <span className="text-[11px] text-slate-500">Порт не привязан</span>
                       )}
                       {container.osInfo?.noVncPort && !isRunning && (
-                        <p className="text-[10px] text-amber-400 font-semibold mt-0.5">🔒 Порт занят — остановлен</p>
+                        <p className="text-[10px] text-amber-400 font-semibold mt-0.5 inline-flex items-center gap-1">
+                          <Lock className="w-3 h-3 shrink-0" /> Порт занят — остановлен
+                        </p>
                       )}
                     </td>
 

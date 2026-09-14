@@ -521,7 +521,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
       ? Math.round((installer.currentStep / installer.totalSteps) * 100)
       : 0;
 
-  const toggle = (label: string, value: boolean, set: (v: boolean) => void, disabled: boolean) => (
+  const toggle = (label: string, value: boolean, set: (v: boolean) => void, disabled: boolean, icon?: React.ReactNode) => (
     <button
       type="button"
       disabled={disabled}
@@ -532,7 +532,8 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
           : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${value ? 'bg-blue-400' : 'bg-slate-600'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${value ? 'bg-blue-400' : 'bg-slate-600'}`} style={icon ? { display: 'none' } : undefined} />
+      {icon && <span className="flex items-center">{icon}</span>}
       {label}
     </button>
   );
@@ -652,7 +653,7 @@ Write-Host "Готово! Панель: http://localhost:3000" -ForegroundColor 
             {toggle('Docker Engine', installDocker, setInstallDocker, running)}
             {toggle('Node.js LTS', installNode, setInstallNode, running)}
             {toggle('NVIDIA Toolkit', installNvidia, setInstallNvidia, running)}
-            {toggle('🛡 Dry-run (тест)', dryRun, setDryRun, running)}
+            {toggle('Dry-run (тест)', dryRun, setDryRun, running, <ShieldCheck className="w-3.5 h-3.5" />)}
           </div>
         </div>
 

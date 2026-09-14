@@ -76,6 +76,12 @@ export const Header: React.FC<HeaderProps> = ({
   const ramTotalGb = systemInfo ? (systemInfo.memory.total / (1024 * 1024 * 1024)).toFixed(1) : '0';
   const ramPercent = systemInfo ? systemInfo.memory.percent : 0;
   const isDockerActive = systemInfo?.docker?.socketAvailable || systemInfo?.docker?.mode === 'connected';
+  const nodeOnline = (id: string): boolean => {
+    if (id === 'local') return true;
+    const n = nodes.find((x) => x.id === id);
+    return n ? !!n.status?.online : false;
+  };
+  const activeNodeOnline = nodeOnline(activeNodeId);
 
   return (
     <header
@@ -108,6 +114,9 @@ export const Header: React.FC<HeaderProps> = ({
             style={{ background: 'var(--color-band-bg)' }}
           >
             <Monitor className={`w-3.5 h-3.5 ${activeNodeId !== 'local' ? 'text-accent' : 'text-muted'}`} />
+            <svg viewBox="0 0 8 8" className={`w-2 h-2 shrink-0 ${activeNodeId === 'local' ? 'opacity-40' : ''}`} aria-hidden="true">
+              <circle cx="4" cy="4" r="3.5" fill={activeNodeOnline ? 'var(--color-ok)' : 'var(--color-danger)'} />
+            </svg>
             <select
               id="device-selector"
               value={activeNodeId}
@@ -115,10 +124,10 @@ export const Header: React.FC<HeaderProps> = ({
               className="bg-transparent text-ink-2 font-medium outline-none cursor-pointer max-w-[150px] text-xs"
               title="Управление устройством — все вкладки работают с выбранным ПК"
             >
-              <option value="local" className="bg-paper-2">🖥️ Этот ПК</option>
+              <option value="local" className="bg-paper-2">Этот ПК</option>
               {nodes.map((n) => (
                 <option key={n.id} value={n.id} className="bg-paper-2">
-                  {n.status?.online ? '🟢' : '🔴'} {n.name}
+                  {n.name} ({n.status?.online ? 'онлайн' : 'офлайн'})
                 </option>
               ))}
             </select>

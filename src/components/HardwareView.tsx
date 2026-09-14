@@ -303,9 +303,9 @@ export const HardwareView: React.FC<HardwareViewProps> = ({ authToken, showToast
             onChange={(e) => setTargetNode(e.target.value)}
             className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
           >
-            <option value="local">🖥️ Этот компьютер (локально)</option>
+            <option value="local">Этот компьютер (локально)</option>
             {nodes?.filter((n) => n.status?.online).map((n) => (
-              <option key={n.id} value={n.id}>🖥️ {n.name} ({n.ip}:{n.port})</option>
+              <option key={n.id} value={n.id}>{n.name} ({n.ip}:{n.port})</option>
             ))}
             {nodes?.filter((n) => !n.status?.online).map((n) => (
               <option key={n.id} value={n.id} disabled>{n.name} — оффлайн</option>
