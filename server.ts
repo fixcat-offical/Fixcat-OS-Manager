@@ -37,7 +37,7 @@ interface UserRecord {
   lastLoginAt?: string;
 }
 
-const appVersion = '2.6.0';
+const appVersion = '2.7.0';
 
 // Multi-session support: token -> username
 const sessions = new Map<string, string>();
@@ -2447,6 +2447,199 @@ app.post('/api/update/restart', requireAdmin, async (_req, res) => {
     setTimeout(() => process.exit(0), 1500);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || 'Не удалось перезапустить панель' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AI Agent API — управление панелью внешним интеллектом (нейронкой)
+// Любой агент с API-ключом может получить описание инструментов и выполнить их.
+// Каждый инструмент соответствует конкретной кнопке/пункту панели и имеет свою
+// метку доступа (read/write). Исполнение — через внутренний HTTP на API-ключе,
+// поэтому логика совпадает с обычными эндпоинтами панели 1-в-1.
+// ---------------------------------------------------------------------------
+
+interface AiToolParam {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object';
+  required?: boolean;
+  description: string;
+  enum?: string[];
+}
+
+interface AiTool {
+  name: string;
+  description: string;
+  permission: 'read' | 'write';
+  method: 'GET' | 'POST';
+  path: string;
+  params: AiToolParam[];
+  fixedBody?: Record<string, any>;
+}
+
+const AI_TOOLS: AiTool[] = [
+  // --- Контейнеры (вкладка «Контейнеры») ---
+  { name: 'list_containers', description: 'Список всех контейнеров (ВМ/ОС) со статусом, портами и метриками', permission: 'read', method: 'GET', path: '/api/containers', params: [] },
+  { name: 'container_inspect', description: 'Подробная информация о контейнере', permission: 'read', method: 'GET', path: '/api/containers/:id/inspect', params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_logs', description: 'Последние 150 строк логов контейнера', permission: 'read', method: 'GET', path: '/api/containers/:id/logs', params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_start', description: 'Запустить контейнер', permission: 'write', method: 'POST', path: '/api/containers/:id/action', fixedBody: { action: 'start' }, params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_stop', description: 'Остановить контейнер', permission: 'write', method: 'POST', path: '/api/containers/:id/action', fixedBody: { action: 'stop' }, params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_restart', description: 'Перезапустить контейнер', permission: 'write', method: 'POST', path: '/api/containers/:id/action', fixedBody: { action: 'restart' }, params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_remove', description: 'УДАЛИТЬ контейнер навсегда (деструктивно: удаляется ВМ и её Windows-хранилище, затем подчищаются одноразовые образы)', permission: 'write', method: 'POST', path: '/api/containers/:id/action', fixedBody: { action: 'remove' }, params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }] },
+  { name: 'container_rename', description: 'Переименовать контейнер', permission: 'write', method: 'POST', path: '/api/containers/:id/rename', params: [{ name: 'id', type: 'string', required: true, description: 'ID или имя контейнера' }, { name: 'name', type: 'string', required: true, description: 'Новое имя: 3-64 символа, буквы/цифры/точка/дефис/подчёркивание' }] },
+  { name: 'deploy_container', description: 'Развернуть новую ОС/контейнер (кнопка «Развернуть ОС»): Ubuntu, Windows XP/7/8/10/11, Debian, Kali, Alpine или кастомный образ', permission: 'write', method: 'POST', path: '/api/containers/create', params: [
+    { name: 'osType', type: 'string', description: 'ОС для развёртывания', enum: ['ubuntu', 'windows-xp', 'windows-7', 'windows-8', 'windows-10', 'windows-11', 'debian', 'kali', 'alpine'] },
+    { name: 'containerName', type: 'string', description: 'Имя контейнера (по умолчанию сгенерируется автоматически)' },
+    { name: 'vncPort', type: 'number', description: 'Свободный HTTP-порт web-интерфейса (по умолчанию 6082 или авто-подбор)' },
+    { name: 'ramMb', type: 'number', description: 'RAM в МБ (по умолчанию из настроек панели)' },
+    { name: 'cpuCores', type: 'number', description: 'Число ядер CPU (по умолчанию из настроек панели)' },
+    { name: 'resolution', type: 'string', description: 'Разрешение рабочего стола, например 1920x1080' },
+    { name: 'restartPolicy', type: 'string', enum: ['no', 'always', 'unless-stopped', 'on-failure'], description: 'Политика автозапуска при перезагрузке ПК' },
+    { name: 'image', type: 'string', description: 'Кастомный Docker-образ вместо шаблона ОС, например kasmweb/kali-rolling-desktop:1.16.0' },
+    { name: 'webPort', type: 'number', description: 'Внутренний web-порт кастомного образа' },
+    { name: 'vncPortInternal', type: 'number', description: 'Внутренний VNC-порт кастомного образа' },
+    { name: 'gpu', type: 'boolean', description: 'Выделить GPU (для Windows; автоопределяется NVIDIA/AMD/Intel)' },
+  ] },
+  { name: 'list_images', description: 'Список локальных Docker-образов', permission: 'read', method: 'GET', path: '/api/images', params: [] },
+
+  // --- Дашборд / мониторинг ---
+  { name: 'system_info', description: 'Информация о хосте: CPU, RAM, GPU, диск, сеть, версия панели, API-ключ', permission: 'read', method: 'GET', path: '/api/system', params: [] },
+  { name: 'docker_info', description: 'Параметры Docker Engine: версия, ядро, число контейнеров', permission: 'read', method: 'GET', path: '/api/docker/info', params: [] },
+  { name: 'stats_history', description: 'История метрик (CPU/RAM/GPU/диск)', permission: 'read', method: 'GET', path: '/api/stats/history', params: [] },
+  { name: 'events', description: 'Журнал событий панели и Docker за последнее время', permission: 'read', method: 'GET', path: '/api/events', params: [] },
+
+  // --- Связанные ПК (Узлы) ---
+  { name: 'list_nodes', description: 'Список подключённых ПК (узлов) со статусом и последними данными', permission: 'read', method: 'GET', path: '/api/nodes', params: [] },
+  { name: 'node_proxy', description: 'Выполнить разрешённый запрос к удалённой панели-узлу через прокси (контейнеры, автозапуск, события, статистика, настройки, обновление, оборудование, образы, порты, Docker-info)', permission: 'write', method: 'POST', path: '/api/nodes/:id/proxy', params: [
+    { name: 'id', type: 'string', required: true, description: 'ID узла (см. list_nodes)' },
+    { name: 'path', type: 'string', required: true, description: 'Путь на удалённой панели, например /api/containers или /api/containers/abc/logs' },
+    { name: 'method', type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE'], description: 'Метод запроса (по умолчанию GET)' },
+    { name: 'body', type: 'object', description: 'Тело запроса для POST/PUT' },
+  ] },
+
+  // --- Автозапуск ---
+  { name: 'list_autostarts', description: 'Список политик автозапуска контейнеров', permission: 'read', method: 'GET', path: '/api/autostarts', params: [] },
+  { name: 'set_autostart', description: 'Установить политику автозапуска для контейнера', permission: 'write', method: 'POST', path: '/api/autostarts/:id', params: [{ name: 'id', type: 'string', required: true, description: 'ID контейнера' }, { name: 'policy', type: 'string', required: true, enum: ['no', 'always', 'unless-stopped', 'on-failure'], description: 'Политика автозапуска' }] },
+  { name: 'autostarts_bulk', description: 'Применить политику автозапуска сразу ко всем контейнерам', permission: 'write', method: 'POST', path: '/api/autostarts/bulk', params: [{ name: 'policy', type: 'string', required: true, enum: ['no', 'always', 'unless-stopped', 'on-failure'], description: 'Политика' }, { name: 'state', type: 'boolean', description: 'true — применить ко всем' }] },
+
+  // --- Оборудование (вкладка «Железо») ---
+  { name: 'hardware_cpu', description: 'Текущая частота/нагрузка CPU и доступные губернаторы', permission: 'read', method: 'GET', path: '/api/hardware/cpu', params: [] },
+  { name: 'hardware_fans', description: 'Скорость вентиляторов и допустимые уровни PWM', permission: 'read', method: 'GET', path: '/api/hardware/fans', params: [] },
+  { name: 'hardware_swap', description: 'Состояние swap-файла', permission: 'read', method: 'GET', path: '/api/hardware/swap', params: [] },
+
+  // --- Настройки / пользователи / обновление ---
+  { name: 'list_users', description: 'Список пользователей панели с ролями', permission: 'read', method: 'GET', path: '/api/users', params: [] },
+  { name: 'config_get', description: 'Конфигурация панели (порты, политики по умолчанию, коллекции)', permission: 'read', method: 'GET', path: '/api/config', params: [] },
+  { name: 'ports_next', description: 'Следующий свободный порт для развёртывания', permission: 'read', method: 'GET', path: '/api/ports/next', params: [] },
+  { name: 'update_panel', description: 'Обновить панель из GitLab/GitHub (долгий процесс, панель перезапустится)', permission: 'write', method: 'POST', path: '/api/update/panel', params: [] },
+  { name: 'restart_panel', description: 'Перезапустить сервис панели', permission: 'write', method: 'POST', path: '/api/update/restart', params: [] },
+];
+
+const AI_TOOL_BY_NAME = new Map(AI_TOOLS.map((t) => [t.name, t] as const));
+
+function buildToolUrl(tool: AiTool, params: Record<string, any>): { url: string; body: Record<string, any> } {
+  let url = tool.path;
+  const body: Record<string, any> = {};
+  const query: string[] = [];
+  for (const p of tool.params) {
+    const value = params[p.name];
+    if (p.required && value === undefined) {
+      throw new Error(`Не хватает параметра "${p.name}": ${p.description}`);
+    }
+    if (value === undefined) continue;
+    if (p.enum && !p.enum.includes(String(value))) {
+      throw new Error(`Параметр "${p.name}" может принимать только: ${p.enum.join(', ')} (передано: ${value})`);
+    }
+    if (url.includes(`:${p.name}`)) {
+      url = url.replace(`:${p.name}`, encodeURIComponent(String(value)));
+    } else if (tool.method === 'GET') {
+      query.push(`${encodeURIComponent(p.name)}=${encodeURIComponent(String(value))}`);
+    } else {
+      body[p.name] = value;
+    }
+  }
+  if (query.length) url += '?' + query.join('&');
+  return { url, body: { ...(tool.fixedBody || {}), ...body } };
+}
+
+// Внутренний вызов собственных эндпоинтов: 1-в-1 логика с обычным REST API панели
+function aiSelfRequest(path: string, method: string, body: any): Promise<{ statusCode: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: PORT,
+        path,
+        method,
+        timeout: 180000,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Fixcat-Api-Key': appConfig.apiKey || '',
+          'User-Agent': 'Fixcat-OS-Manager-Agent/' + appVersion,
+        },
+      },
+      (res) => {
+        let b = '';
+        res.on('data', (c) => (b += c));
+        res.on('end', () => {
+          let d: any = b;
+          try { d = JSON.parse(b); } catch { /* plain text */ }
+          resolve({ statusCode: res.statusCode || 500, data: d });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('Превышен таймаут (180 с).')); });
+    if (body && Object.keys(body).length) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+function abridgeAiData(data: any): any {
+  try {
+    const s = JSON.stringify(data);
+    if (s.length <= 200000) return data;
+    return { truncated: true, bytes: s.length, note: 'Ответ слишком большой, показано начало', preview: s.slice(0, 120000) + '…' };
+  } catch {
+    return data;
+  }
+}
+
+// GET /api/ai/tools — манифест инструментов для нейронки (что умеет панель)
+app.get('/api/ai/tools', requireAuth, (_req, res) => {
+  res.json({
+    ok: true,
+    agent: 'Fixcat OS Manager Agent',
+    version: appVersion,
+    basePath: '/api',
+    authHeader: 'X-Fixcat-Api-Key',
+    tools: AI_TOOLS,
+  });
+});
+
+// POST /api/ai/run — выполнить инструмент нейронкой
+// Тело: { "tool": "container_logs", "params": { "id": "..." } }
+app.post('/api/ai/run', requireAdmin, async (req, res) => {
+  const { tool: toolName, params } = req.body || {};
+  const tool = AI_TOOL_BY_NAME.get(String(toolName || ''));
+  if (!tool) {
+    return res.status(404).json({
+      ok: false,
+      error: `Инструмент "${toolName}" не найден. Доступно: ${AI_TOOLS.map((t) => t.name).join(', ')}`,
+    });
+  }
+  const p: Record<string, any> = params && typeof params === 'object' ? params : {};
+  let built: { url: string; body: Record<string, any> };
+  try {
+    built = buildToolUrl(tool, p);
+  } catch (e: any) {
+    return res.status(400).json({ ok: false, tool: tool.name, error: e.message });
+  }
+  try {
+    const { statusCode, data: raw } = await aiSelfRequest(built.url, tool.method, built.body);
+    const data = abridgeAiData(raw);
+    return res.status(statusCode).json({ ok: statusCode < 400, status: statusCode, tool: tool.name, data });
+  } catch (e: any) {
+    return res.status(502).json({ ok: false, tool: tool.name, error: e?.message || 'Внутренний вызов API не удался' });
   }
 });
 
