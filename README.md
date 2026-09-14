@@ -4,7 +4,7 @@
 
 ### Веб-панель управления операционными системами в Docker и контейнерами
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg?style=for-the-badge&logo=github)](https://github.com/fixcat-offical/Fixcat-OS-Manager)
+[![Version](https://img.shields.io/badge/version-2.8.0-blue.svg?style=for-the-badge&logo=github)](https://github.com/fixcat-offical/Fixcat-OS-Manager)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)

@@ -37,7 +37,7 @@ interface UserRecord {
   lastLoginAt?: string;
 }
 
-const appVersion = '2.7.0';
+const appVersion = '2.8.0';
 
 // Multi-session support: token -> username
 const sessions = new Map<string, string>();
