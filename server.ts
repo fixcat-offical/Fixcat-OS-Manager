@@ -429,6 +429,37 @@ async function getAvailablePort(desiredPort: number): Promise<number> {
   return desiredPort;
 }
 
+const LINUX_RDP_USERS: Record<string, string> = { ubuntu: 'headless', debian: 'abc', kali: 'kasm_user' };
+
+async function bootstrapLinuxRdp(containerId: string, osType: string): Promise<void> {
+  const user = LINUX_RDP_USERS[osType];
+  if (!user) return;
+  const script = [
+    'export DEBIAN_FRONTEND=noninteractive',
+    'apt-get update -qq >/dev/null 2>&1 || true',
+    'apt-get install -y -qq xrdp >/dev/null 2>&1 || true',
+    `echo "${user}:${user}" | chpasswd >/dev/null 2>&1 || true`,
+    'service xrdp-sesman start >/dev/null 2>&1 || true',
+    'service xrdp start >/dev/null 2>&1 || true',
+    'true',
+  ].join(' && ');
+  try {
+    const execRes = await queryDockerSocket(`/containers/${containerId}/exec`, 'POST', {
+      User: '0',
+      AttachStdout: false,
+      AttachStderr: false,
+      Tty: false,
+      Cmd: ['bash', '-c', script],
+    });
+    const execId = execRes.data?.Id;
+    if (execId) {
+      await queryDockerSocket(`/exec/${execId}/start`, 'POST', { Detach: false, Tty: false });
+    }
+  } catch (err) {
+    console.error('linux-rdp-bootstrap:', err);
+  }
+}
+
 // Helper to query Docker Unix socket or TCP Host
 function queryDockerSocket(pathStr: string, method = 'GET', postData?: any): Promise<{ statusCode: number; data: any }> {
   return new Promise((resolve, reject) => {
@@ -1918,6 +1949,8 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
   let extraDevices = '';
   let extraVolumes = '';
   let rdpHostPort: number | null = null;
+  const userRdpPort = parseInt(req.body.rdpPort, 10);
+  const userRdpPortValid = userRdpPort >= 1 && userRdpPort <= 65535;
   const winDeviceList: string[] = [];
   if (isWindows) {
     const kvmTunDevices = ['/dev/kvm', '/dev/net/tun'];
@@ -1945,9 +1978,9 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
     } catch { /* host fs may be readonly */ }
     seedWindowsIsoCache(storageDir, windowsVersion);
     extraVolumes = ` -v "${storageDir}:/storage"`;
-    const userRdpPort = parseInt(req.body.rdpPort, 10);
-    rdpHostPort =
-      userRdpPort >= 1 && userRdpPort <= 65535 ? await getAvailablePort(userRdpPort) : await getAvailablePort(actualVncPort + 100);
+    rdpHostPort = userRdpPortValid ? await getAvailablePort(userRdpPort) : await getAvailablePort(actualVncPort + 100);
+  } else if (userRdpPortValid) {
+    rdpHostPort = await getAvailablePort(userRdpPort);
   }
 
   // Different images expose noVNC/VNC on different container ports
@@ -1957,7 +1990,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
       : getImagePorts(image);
 
   const memArg = isWindows ? `${ramGb}g` : `${ramMbVal}m`;
-  const dockerRunCmd = `docker run -d --restart=${restartPolicy || appConfig.defaultRestartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc}${isWindows ? ` -p ${rdpHostPort}:3389/tcp` : ''} -e RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}${extraEnv} --memory=${memArg} --cpus=${cpuVal}${extraDevices}${extraVolumes} --label io.fixcat.os=${osType || 'custom'} ${image}`;
+  const dockerRunCmd = `docker run -d --restart=${restartPolicy || appConfig.defaultRestartPolicy || 'no'} --name ${name} -p ${actualPort}:${imgPorts.web} -p ${actualVncPort}:${imgPorts.vnc}${rdpHostPort ? ` -p ${rdpHostPort}:3389/tcp` : ''} -e RESOLUTION=${resolution || appConfig.defaultResolution || '1920x1080'}${extraEnv} --memory=${memArg} --cpus=${cpuVal}${extraDevices}${extraVolumes} --label io.fixcat.os=${osType || 'custom'} ${image}`;
 
   exec(dockerRunCmd, async (error, stdout, stderr) => {
     if (!error && stdout) {
@@ -1965,6 +1998,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
       portRegistry.set(containerId, { name, port: actualPort, restart: restartPolicy || appConfig.defaultRestartPolicy || 'no', managed: true });
       savePortRegistry();
       recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, containerId, containerId);
+      if (rdpHostPort && !isWindows) bootstrapLinuxRdp(containerId, osType);
       return res.json({
         success: true,
         containerId,
@@ -1997,14 +2031,14 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
           ExposedPorts: {
             [`${imgPorts.web}/tcp`]: {},
             [`${imgPorts.vnc}/tcp`]: {},
-            ...(isWindows ? { '3389/tcp': {} } : {}),
+            ...(rdpHostPort ? { '3389/tcp': {} } : {}),
           },
           HostConfig: {
             RestartPolicy: { Name: restartPolicy || appConfig.defaultRestartPolicy || 'no', MaximumRetryCount: (restartPolicy || appConfig.defaultRestartPolicy || 'no') === 'on-failure' ? 5 : 0 },
             PortBindings: {
               [`${imgPorts.web}/tcp`]: [{ HostPort: String(actualPort) }],
               [`${imgPorts.vnc}/tcp`]: [{ HostPort: String(actualVncPort) }],
-              ...(isWindows && rdpHostPort ? { '3389/tcp': [{ HostPort: String(rdpHostPort) }] } : {}),
+              ...(rdpHostPort ? { '3389/tcp': [{ HostPort: String(rdpHostPort) }] } : {}),
             },
             Memory: ramMbVal * 1024 * 1024,
             ...(isWindows && winDeviceList.length ? { Devices: winDeviceList.map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'mrw' })) } : {}),
@@ -2028,6 +2062,7 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
           portRegistry.set(createRes.data.Id, { name, port: actualPort, restart: restartPolicy || appConfig.defaultRestartPolicy || 'no', managed: true });
           savePortRegistry();
           recordEvent(customImageName ? 'custom-create' : 'create', `Запущен контейнер «${name}» (${image})`, createRes.data.Id, createRes.data.Id);
+          if (rdpHostPort && !isWindows) bootstrapLinuxRdp(createRes.data.Id, osType);
           return res.json({
             success: true,
             containerId: createRes.data.Id,
@@ -2500,7 +2535,7 @@ const AI_TOOLS: AiTool[] = [
     { name: 'webPort', type: 'number', description: 'Внутренний web-порт кастомного образа' },
     { name: 'vncPortInternal', type: 'number', description: 'Внутренний VNC-порт кастомного образа' },
     { name: 'gpu', type: 'boolean', description: 'Выделить GPU (для Windows; автоопределяется NVIDIA/AMD/Intel)' },
-    { name: 'rdpPort', type: 'number', description: 'Внешний RDP-порт (3389) для Windows; пусто — авто-подбор' },
+    { name: 'rdpPort', type: 'number', description: 'Внешний RDP-порт (3389); Windows — сразу, Linux (ubuntu/debian/kali) — xrdp установится автоматически в контейнер; пусто — авто-подбор' },
   ] },
   { name: 'list_images', description: 'Список локальных Docker-образов', permission: 'read', method: 'GET', path: '/api/images', params: [] },
 

@@ -279,10 +279,12 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
     'windows-11': '11',
   };
   const isWindowsTemplate = !isCustom && selectedTemplate.startsWith('windows-');
+  const isLinuxRdpTemplate = ['ubuntu', 'debian', 'kali'].includes(selectedTemplate);
+  const isAlpineTemplate = selectedTemplate === 'alpine';
   const resolvedRdpPort = rdpPort ? parseInt(rdpPort, 10) : parseInt(vncPort, 10) + 200;
   const dockerCmd = isWindowsTemplate
     ? `docker run -d --restart=${restartPolicy} --name ${containerName || 'windows'} -p ${vncPort}:8006 -p ${parseInt(vncPort, 10) + 100}:5900 -p ${resolvedRdpPort}:3389/tcp -e VERSION=${WINDOWS_VERSIONS[selectedTemplate]} -e RAM_SIZE=${Math.max(1, Math.ceil((parseInt(ramMb, 10) || 2048) / 1024))}G -e CPU_CORES=${cpuCores}${gpu ? ' -e GPU=Y --gpus all' : ''} --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN --stop-timeout 120 -v "\${PWD:-.}/windows:/storage" docker.io/dockurr/windows:6.04`
-    : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
+    : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort}${isLinuxRdpTemplate && rdpPort ? ` -p ${parseInt(rdpPort, 10)}:3389/tcp` : ''} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
   const handleCopyCmd = async () => {
     const ok = await copyText(dockerCmd);
@@ -314,7 +316,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
         vncPortInternal: isCustom ? resolvedVncPort : undefined,
         containerName,
         vncPort,
-        rdpPort: isWindowsTemplate ? rdpPort : undefined,
+        rdpPort,
         ramMb,
         cpuCores,
         resolution,
@@ -508,10 +510,10 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                 </div>
               </div>
 
-              {isWindowsTemplate && (
+              {(isWindowsTemplate || isLinuxRdpTemplate || isAlpineTemplate) && (
                 <div>
                   <label className="text-slate-400 mb-1 block">
-                    RDP порт (Windows):
+                    RDP порт ({isWindowsTemplate ? 'Windows' : 'Linux'}):
                     <span className="text-slate-500 font-normal"> — пусто = авто</span>
                   </label>
                   <input
@@ -519,11 +521,17 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                     min={1}
                     max={65535}
                     value={rdpPort}
-                    disabled={isDeploying}
+                    disabled={isDeploying || isAlpineTemplate}
                     onChange={(e) => setRdpPort(e.target.value)}
-                    placeholder={`Авто (${parseInt(vncPort, 10) + 200})`}
+                    placeholder={isAlpineTemplate ? 'xrdp недоступен (Alpine)' : `Авто (${parseInt(vncPort, 10) + 200})`}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
                   />
+                  {isAlpineTemplate && (
+                    <p className="text-[10px] text-amber-400/90 mt-1">Alpine не поддерживает xrdp — RDP недоступен для этого шаблона.</p>
+                  )}
+                  {isLinuxRdpTemplate && (
+                    <p className="text-[10px] text-slate-500 mt-1">Для Linux панель сама установит и запустит xrdp в контейнере (1–2 мин после создания).</p>
+                  )}
                 </div>
               )}
 
