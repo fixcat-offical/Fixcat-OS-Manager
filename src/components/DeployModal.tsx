@@ -46,6 +46,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
   const [selectedTemplate, setSelectedTemplate] = useState('ubuntu');
   const [containerName, setContainerName] = useState(`ubuntu-desktop-${Math.floor(Math.random() * 89 + 10)}`);
   const [vncPort, setVncPort] = useState('6082');
+  const [rdpPort, setRdpPort] = useState('');
   const [ramMb, setRamMb] = useState('2048');
   const [cpuCores, setCpuCores] = useState('2');
   const [resolution, setResolution] = useState('1920x1080');
@@ -278,8 +279,9 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
     'windows-11': '11',
   };
   const isWindowsTemplate = !isCustom && selectedTemplate.startsWith('windows-');
+  const resolvedRdpPort = rdpPort ? parseInt(rdpPort, 10) : parseInt(vncPort, 10) + 200;
   const dockerCmd = isWindowsTemplate
-    ? `docker run -it --rm --name windows -e "VERSION=${WINDOWS_VERSIONS[selectedTemplate]}" -p 8006:8006 --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v "\${PWD:-.}/windows:/storage" --stop-timeout 120 docker.io/dockurr/windows:6.04`
+    ? `docker run -d --restart=${restartPolicy} --name ${containerName || 'windows'} -p ${vncPort}:8006 -p ${parseInt(vncPort, 10) + 100}:5900 -p ${resolvedRdpPort}:3389/tcp -e VERSION=${WINDOWS_VERSIONS[selectedTemplate]} -e RAM_SIZE=${Math.max(1, Math.ceil((parseInt(ramMb, 10) || 2048) / 1024))}G -e CPU_CORES=${cpuCores}${gpu ? ' -e GPU=Y --gpus all' : ''} --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN --stop-timeout 120 -v "\${PWD:-.}/windows:/storage" docker.io/dockurr/windows:6.04`
     : `docker run -d --restart=${restartPolicy} --name ${containerName || 'os-desktop'} -p ${vncPort}:${resolvedWebPort} -p ${parseInt(vncPort, 10) + 100}:${resolvedVncPort} -e RESOLUTION=${resolution} --memory=${ramMb}m --cpus=${cpuCores} ${resolvedImage}`;
 
   const handleCopyCmd = async () => {
@@ -312,6 +314,7 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
         vncPortInternal: isCustom ? resolvedVncPort : undefined,
         containerName,
         vncPort,
+        rdpPort: isWindowsTemplate ? rdpPort : undefined,
         ramMb,
         cpuCores,
         resolution,
@@ -505,6 +508,25 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                 </div>
               </div>
 
+              {isWindowsTemplate && (
+                <div>
+                  <label className="text-slate-400 mb-1 block">
+                    RDP порт (Windows):
+                    <span className="text-slate-500 font-normal"> — пусто = авто</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={rdpPort}
+                    disabled={isDeploying}
+                    onChange={(e) => setRdpPort(e.target.value)}
+                    placeholder={`Авто (${parseInt(vncPort, 10) + 200})`}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-slate-400 mb-1 block">Оперативная память (MB):</label>
                 <input
@@ -512,6 +534,19 @@ export const DeployModal: React.FC<DeployModalProps> = ({ onClose, onDeploy, nod
                   value={ramMb}
                   disabled={isDeploying}
                   onChange={(e) => setRamMb(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 mb-1 block">Ядра CPU:</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={32}
+                  value={cpuCores}
+                  disabled={isDeploying}
+                  onChange={(e) => setCpuCores(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:border-blue-500 focus:outline-none font-mono disabled:opacity-50"
                 />
               </div>

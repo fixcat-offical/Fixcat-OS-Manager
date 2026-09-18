@@ -1945,7 +1945,9 @@ app.post('/api/containers/create', requireAdmin, async (req, res) => {
     } catch { /* host fs may be readonly */ }
     seedWindowsIsoCache(storageDir, windowsVersion);
     extraVolumes = ` -v "${storageDir}:/storage"`;
-    rdpHostPort = await getAvailablePort(actualVncPort + 100);
+    const userRdpPort = parseInt(req.body.rdpPort, 10);
+    rdpHostPort =
+      userRdpPort >= 1 && userRdpPort <= 65535 ? await getAvailablePort(userRdpPort) : await getAvailablePort(actualVncPort + 100);
   }
 
   // Different images expose noVNC/VNC on different container ports
@@ -2498,6 +2500,7 @@ const AI_TOOLS: AiTool[] = [
     { name: 'webPort', type: 'number', description: 'Внутренний web-порт кастомного образа' },
     { name: 'vncPortInternal', type: 'number', description: 'Внутренний VNC-порт кастомного образа' },
     { name: 'gpu', type: 'boolean', description: 'Выделить GPU (для Windows; автоопределяется NVIDIA/AMD/Intel)' },
+    { name: 'rdpPort', type: 'number', description: 'Внешний RDP-порт (3389) для Windows; пусто — авто-подбор' },
   ] },
   { name: 'list_images', description: 'Список локальных Docker-образов', permission: 'read', method: 'GET', path: '/api/images', params: [] },
 
